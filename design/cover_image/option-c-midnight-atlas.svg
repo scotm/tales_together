@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 1600 2400" width="1600" height="2400" role="img" aria-labelledby="t d">
+  <title id="t">Cover Option C — The Midnight Bedtime Atlas</title>
+  <desc id="d">A cosy night-sky star chart: indigo-to-plum gradient, a glowing crescent moon, the hero drawn as a constellation of gold stars, a tiny lit cottage with a dotted trail into the sky, a compass rose, and a Ministry of Bedtime certification.</desc>
+
+  <defs>
+    <style><![CDATA[
+      @import url('https://fonts.googleapis.com/css2?family=Yeseva+One&family=Nunito:ital,wght@0,400;0,700;0,800;1,300;1,400&display=swap');
+      .yeseva { font-family: 'Yeseva One', 'Playfair Display', Georgia, serif; }
+      .nunito { font-family: 'Nunito', 'Lexend', 'Helvetica Neue', sans-serif; }
+    ]]></style>
+
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#050A26"/>
+      <stop offset="0.55" stop-color="#151A4F"/>
+      <stop offset="1" stop-color="#3B1D5E"/>
+    </linearGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0.6" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.45"/>
+    </radialGradient>
+    <radialGradient id="moonGlow">
+      <stop offset="0" stop-color="#F5D77A" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#F5D77A" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="windowGlow">
+      <stop offset="0" stop-color="#FDE68A" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#FDE68A" stop-opacity="0"/>
+    </radialGradient>
+
+    <mask id="crescent">
+      <rect width="1600" height="2400" fill="#FFFFFF"/>
+      <circle cx="400" cy="340" r="138" fill="#000000"/>
+    </mask>
+
+    <filter id="starGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <clipPath id="heroWindow"><circle cx="800" cy="1450" r="430"/></clipPath>
+
+    <symbol id="twinkle" viewBox="-20 -20 40 40">
+      <path d="M0 -18 C 1.5 -5, 5 -1.5, 18 0 C 5 1.5, 1.5 5, 0 18 C -1.5 5, -5 1.5, -18 0 C -5 -1.5, -1.5 -5, 0 -18Z" fill="#FFFFFF"/>
+    </symbol>
+  </defs>
+
+  <!-- ============ SKY ============ -->
+  <rect width="1600" height="2400" fill="url(#sky)"/>
+
+  <!-- background stars -->
+  <g fill="#FFFFFF">
+    <circle cx="120" cy="140" r="2.5" opacity="0.8"/><circle cx="260" cy="90" r="1.5" opacity="0.6"/><circle cx="640" cy="120" r="2" opacity="0.7"/>
+    <circle cx="900" cy="80" r="3" opacity="0.9"/><circle cx="1180" cy="160" r="1.5" opacity="0.5"/><circle cx="1480" cy="110" r="2.5" opacity="0.8"/>
+    <circle cx="1400" cy="300" r="1.8" opacity="0.6"/><circle cx="1050" cy="260" r="2.2" opacity="0.7"/><circle cx="760" cy="330" r="1.5" opacity="0.5"/>
+    <circle cx="160" cy="520" r="2" opacity="0.7"/><circle cx="1520" cy="560" r="2.5" opacity="0.8"/><circle cx="1300" cy="640" r="1.5" opacity="0.5"/>
+    <circle cx="80" cy="760" r="1.8" opacity="0.6"/><circle cx="330" cy="880" r="2.4" opacity="0.8"/><circle cx="1460" cy="820" r="2" opacity="0.7"/>
+    <circle cx="200" cy="1100" r="1.5" opacity="0.5"/><circle cx="1540" cy="1060" r="2.2" opacity="0.7"/><circle cx="120" cy="1340" r="2.8" opacity="0.9"/>
+    <circle cx="1500" cy="1320" r="1.6" opacity="0.5"/><circle cx="260" cy="1520" r="2" opacity="0.7"/><circle cx="1380" cy="1560" r="2.4" opacity="0.8"/>
+    <circle cx="90" cy="1760" r="1.5" opacity="0.6"/><circle cx="1540" cy="1780" r="2" opacity="0.7"/><circle cx="1240" cy="1880" r="1.6" opacity="0.5"/>
+    <circle cx="420" cy="1940" r="2.2" opacity="0.7"/><circle cx="1100" cy="1960" r="1.5" opacity="0.5"/><circle cx="1450" cy="2020" r="2" opacity="0.6"/>
+    <circle cx="540" cy="600" r="1.3" opacity="0.5"/><circle cx="1020" cy="520" r="1.4" opacity="0.5"/><circle cx="880" cy="1990" r="2" opacity="0.6"/>
+    <circle cx="700" cy="2050" r="1.5" opacity="0.5"/><circle cx="1280" cy="1120" r="1.3" opacity="0.4"/><circle cx="1180" cy="1700" r="1.8" opacity="0.6"/>
+    <circle cx="380" cy="1240" r="1.4" opacity="0.5"/><circle cx="1360" cy="440" r="1.3" opacity="0.4"/><circle cx="500" cy="420" r="1.7" opacity="0.6"/>
+  </g>
+  <g opacity="0.9">
+    <use href="#twinkle" x="1140" y="200" width="44" height="44"/>
+    <use href="#twinkle" x="220" y="1000" width="34" height="34"/>
+    <use href="#twinkle" x="1440" y="1200" width="40" height="40"/>
+    <use href="#twinkle" x="600" y="1960" width="30" height="30"/>
+    <use href="#twinkle" x="1300" y="760" width="26" height="26"/>
+  </g>
+
+  <!-- ============ MOON ============ -->
+  <circle cx="330" cy="380" r="300" fill="url(#moonGlow)"/>
+  <circle cx="330" cy="380" r="150" fill="#F5D77A" mask="url(#crescent)"/>
+  <circle cx="300" cy="420" r="14" fill="#E3C25E" opacity="0.5" mask="url(#crescent)"/>
+  <circle cx="265" cy="350" r="9" fill="#E3C25E" opacity="0.5" mask="url(#crescent)"/>
+
+  <!-- ============ TITLE ============ -->
+  <text x="800" y="582" class="nunito" font-size="36" font-weight="800" letter-spacing="12" fill="#C7B8FF" text-anchor="middle">A BEDTIME ATLAS IN FIVE CHAPTERS</text>
+  <text id="slot-title-1" x="800" y="730" class="yeseva" font-size="150" fill="#F5D77A" text-anchor="middle">Barnaby Whiskers</text>
+  <line x1="560" y1="780" x2="1040" y2="780" stroke="#F5D77A" stroke-width="2" opacity="0.6"/>
+  <circle cx="800" cy="780" r="6" fill="#F5D77A"/>
+  <text id="slot-subtitle" x="800" y="860" class="nunito" font-size="62" font-style="italic" font-weight="300" fill="#E9E4FF" text-anchor="middle">and the Runaway Royal Cake</text>
+
+  <!-- ============ REAL HERO IMAGE SLOT (circular porthole) ============ -->
+  <image id="slot-hero" x="370" y="1020" width="860" height="860" preserveAspectRatio="xMidYMid slice"
+         clip-path="url(#heroWindow)" display="none" href=""/>
+
+  <!-- ============ CONSTELLATION OTTER PLACEHOLDER ============ -->
+  <g id="slot-hero-placeholder">
+    <!-- faint silhouette hint -->
+    <g fill="#F5D77A" opacity="0.06">
+      <ellipse cx="800" cy="1225" rx="180" ry="165"/>
+      <path d="M560 1620 C 600 1420, 700 1350, 800 1350 C 900 1350, 1000 1420, 1040 1620 C 1040 1760, 960 1840, 800 1840 C 640 1840, 560 1760, 560 1620Z"/>
+    </g>
+
+    <!-- connecting lines -->
+    <g fill="none" stroke="#F5D77A" stroke-width="3" stroke-opacity="0.7" stroke-linejoin="round" stroke-linecap="round">
+      <!-- head -->
+      <polyline points="800,1060 920,1110 970,1230 920,1350 800,1390 680,1350 630,1230 680,1110 800,1060"/>
+      <!-- ears -->
+      <polyline points="680,1110 640,1050 720,1072"/>
+      <polyline points="920,1110 960,1050 880,1072"/>
+      <!-- hat -->
+      <polyline points="700,1075 740,990 800,968 860,990 900,1075"/>
+      <!-- body -->
+      <polyline points="680,1350 560,1620 640,1800 800,1840 960,1800 1040,1620 920,1350"/>
+      <!-- apron -->
+      <polyline points="740,1450 860,1450 900,1700 700,1700 740,1450"/>
+      <!-- face -->
+      <polyline points="750,1210 800,1275 850,1210"/>
+      <!-- whiskers -->
+      <line x1="740" y1="1285" x2="650" y2="1268"/><line x1="860" y1="1285" x2="950" y2="1268"/>
+      <!-- the runaway cake, with wings -->
+      <polyline points="1250,940 1320,1020 1250,1100 1180,1020 1250,940"/>
+      <line x1="1180" y1="1020" x2="1110" y2="975"/><line x1="1320" y1="1020" x2="1390" y2="975"/>
+      <!-- the whisk -->
+      <polyline points="560,1620 470,1500 440,1420"/>
+      <polyline points="440,1420 410,1360 440,1300 470,1360 440,1420"/>
+    </g>
+
+    <!-- star vertices -->
+    <g fill="#F5D77A" filter="url(#starGlow)">
+      <circle cx="800" cy="1060" r="9"/><circle cx="920" cy="1110" r="8"/><circle cx="970" cy="1230" r="9"/><circle cx="920" cy="1350" r="7"/>
+      <circle cx="800" cy="1390" r="8"/><circle cx="680" cy="1350" r="7"/><circle cx="630" cy="1230" r="9"/><circle cx="680" cy="1110" r="8"/>
+      <circle cx="640" cy="1050" r="7"/><circle cx="720" cy="1072" r="6"/><circle cx="960" cy="1050" r="7"/><circle cx="880" cy="1072" r="6"/>
+      <circle cx="700" cy="1075" r="6"/><circle cx="740" cy="990" r="7"/><circle cx="800" cy="968" r="11"/><circle cx="860" cy="990" r="7"/><circle cx="900" cy="1075" r="6"/>
+      <circle cx="560" cy="1620" r="9"/><circle cx="640" cy="1800" r="8"/><circle cx="800" cy="1840" r="10"/><circle cx="960" cy="1800" r="8"/><circle cx="1040" cy="1620" r="9"/>
+      <circle cx="740" cy="1450" r="6"/><circle cx="860" cy="1450" r="6"/><circle cx="900" cy="1700" r="6"/><circle cx="700" cy="1700" r="6"/>
+      <circle cx="750" cy="1210" r="11"/><circle cx="850" cy="1210" r="11"/><circle cx="800" cy="1275" r="8"/>
+      <circle cx="650" cy="1268" r="5"/><circle cx="950" cy="1268" r="5"/>
+      <circle cx="1250" cy="940" r="8"/><circle cx="1320" cy="1020" r="7"/><circle cx="1250" cy="1100" r="7"/><circle cx="1180" cy="1020" r="7"/>
+      <circle cx="1110" cy="975" r="6"/><circle cx="1390" cy="975" r="6"/>
+      <circle cx="470" cy="1500" r="6"/><circle cx="440" cy="1420" r="7"/><circle cx="410" cy="1360" r="5"/><circle cx="440" cy="1300" r="7"/><circle cx="470" cy="1360" r="5"/>
+    </g>
+    <!-- the two brightest stars (eyes) get a twinkle -->
+    <use href="#twinkle" x="728" y="1188" width="44" height="44" opacity="0.9"/>
+    <use href="#twinkle" x="828" y="1188" width="44" height="44" opacity="0.9"/>
+
+    <!-- labels -->
+    <text x="800" y="1915" class="nunito" font-size="32" font-style="italic" font-weight="400" fill="#C7B8FF" text-anchor="middle">Lutra Minor · The Lesser Otter</text>
+    <text x="1250" y="1160" class="nunito" font-size="26" font-style="italic" fill="#C7B8FF" text-anchor="middle" opacity="0.85">The Runaway Cake</text>
+    <text x="440" y="1250" class="nunito" font-size="24" font-style="italic" fill="#C7B8FF" text-anchor="middle" opacity="0.85">The Golden Whisk</text>
+  </g>
+
+  <!-- ============ DOTTED TRAIL FROM COTTAGE TO SKY ============ -->
+  <path d="M340 2120 C 380 1950, 430 1760, 560 1640" fill="none" stroke="#F5D77A" stroke-width="4" stroke-dasharray="3 20" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- ============ HILLS + COTTAGE ============ -->
+  <path d="M0 2230 Q 300 2080 600 2210 T 1200 2180 T 1600 2200 L1600 2400 L0 2400Z" fill="#0A0F2E"/>
+  <path d="M0 2300 Q 400 2200 800 2300 T 1600 2280 L1600 2400 L0 2400Z" fill="#070B22"/>
+  <!-- trees -->
+  <g fill="#0A0F2E">
+    <path d="M520 2210 L560 2120 L600 2210Z"/><path d="M590 2200 L620 2140 L650 2200Z"/>
+    <path d="M1060 2190 L1100 2090 L1140 2190Z"/><path d="M1150 2195 L1175 2150 L1200 2195Z"/>
+  </g>
+  <!-- cottage -->
+  <g transform="translate(300 2120)">
+    <circle cx="36" cy="40" r="90" fill="url(#windowGlow)"/>
+    <rect x="0" y="20" width="76" height="60" fill="#1A1F4A"/>
+    <polygon points="-10,22 38,-22 86,22" fill="#262B5E"/>
+    <rect x="52" y="-14" width="14" height="26" fill="#1A1F4A"/>
+    <rect x="26" y="40" width="22" height="22" fill="#FDE68A"/>
+    <line x1="37" y1="40" x2="37" y2="62" stroke="#1A1F4A" stroke-width="3"/><line x1="26" y1="51" x2="48" y2="51" stroke="#1A1F4A" stroke-width="3"/>
+    <!-- chimney puffs -->
+    <circle cx="62" cy="-28" r="7" fill="#C7B8FF" opacity="0.4"/><circle cx="70" cy="-44" r="9" fill="#C7B8FF" opacity="0.3"/><circle cx="82" cy="-62" r="11" fill="#C7B8FF" opacity="0.2"/>
+  </g>
+
+  <!-- ============ COMPASS ROSE ============ -->
+  <g transform="translate(1380 2190)" opacity="0.9">
+    <circle r="72" fill="none" stroke="#F5D77A" stroke-width="2" opacity="0.7"/>
+    <circle r="56" fill="none" stroke="#F5D77A" stroke-width="1" stroke-dasharray="4 6" opacity="0.6"/>
+    <path d="M0 -64 L12 0 L0 64 L-12 0Z" fill="#F5D77A"/>
+    <path d="M-64 0 L0 12 L64 0 L0 -12Z" fill="#F5D77A" opacity="0.55"/>
+    <path d="M0 -64 L12 0 L0 0Z" fill="#3B1D5E" opacity="0.5"/>
+    <text y="-82" class="nunito" font-size="26" font-weight="800" fill="#F5D77A" text-anchor="middle">N</text>
+  </g>
+
+  <!-- ============ AUTHOR + CERTIFICATION ============ -->
+  <text id="slot-author" x="800" y="2300" class="yeseva" font-size="56" fill="#F5D77A" text-anchor="middle">Charted by Leo, age 7</text>
+  <text id="slot-blurb-1" x="800" y="2352" class="nunito" font-size="27" font-weight="700" letter-spacing="2" fill="#C7B8FF" text-anchor="middle">CERTIFIED BY THE MINISTRY OF BEDTIME</text>
+  <text id="slot-blurb-2" x="800" y="2386" class="nunito" font-size="24" font-style="italic" fill="#C7B8FF" text-anchor="middle" opacity="0.85">Approx. one yawn per chapter · results may vary</text>
+
+  <!-- vignette on top of everything -->
+  <rect width="1600" height="2400" fill="url(#vignette)"/>
+</svg>
