@@ -6,7 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/.next", "!**/coverage", "!**/next-env.d.ts"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.expo",
+      "!**/dist",
+      "!**/coverage",
+      "!**/convex/_generated",
+      "!**/expo-env.d.ts",
+      "!**/assets/expo.icon"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -22,15 +31,9 @@
       "trailingCommas": "all"
     }
   },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
-  },
   "linter": {
     "enabled": true,
     "domains": {
-      "next": "recommended",
       "react": "recommended"
     },
     "rules": {

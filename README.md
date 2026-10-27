@@ -1,55 +1,59 @@
 # Tales Together
 
-Collaborative, child-led storybook generator and EPUB 3 publisher. See `docs/` for the full design.
+Collaborative, child-led storybook generator and EPUB 3 publisher. See `docs/` for the product design
+and `docs/decisions.md` for the choices made so far.
 
 ```
-frontend/   Next.js 16 + React 19 + TypeScript 7 + Tailwind CSS 4
-backend/    Django 6 + DRF + Celery + PostgreSQL
+frontend/   Expo app (web, iOS, Android) + Convex backend functions
 design/     Cover art and shared design assets
-docs/       Architecture and product documentation
+docs/       Product, prompt, backend and EPUB design
 ```
 
-## Frontend
+## Stack
+
+- **Client:** Expo SDK 58, Expo Router, React Native Web, TypeScript.
+- **Backend:** Convex. Self-hosted via Docker for local development; hosted Convex for production.
+- **v0 scope:** text + one static illustration + EPUB export. Ages 7–9, five chapters, no accounts.
+
+## Setup
+
+Start the local Convex backend (Docker):
+
+```bash
+docker compose up -d
+docker compose exec backend ./generate_admin_key.sh
+```
+
+Put the key and URL in `frontend/.env.local` (see `frontend/.env.example`), then:
 
 ```bash
 cd frontend
 npm install
-npm run dev          # http://localhost:3000
+npx convex dev
 ```
 
-Zustand (client state), TanStack Query (server state), Framer Motion (animation), and
-camelCase JSON via DRF are pre-wired.
-
-## Backend
+In a second terminal:
 
 ```bash
-cd backend
-cp .env.example .env # optional; SQLite + localhost defaults work out of the box
-uv sync
-uv run python manage.py migrate
-uv run python manage.py runserver  # http://localhost:8000
-uv run pytest
+cd frontend
+npm run web        # http://localhost:8081
+npm run ios        # simulator
+npm run android    # emulator/device
 ```
-
-Celery worker (needs Redis):
-
-```bash
-uv run celery -A config worker -l info
-```
-
-API base path: `/api/`. Health check: `GET /api/health/`.
 
 ## Checks
 
 ```bash
-make check          # frontend + backend
-make check-frontend # typecheck, Biome, Vitest
-make check-backend  # Ruff, mypy, pytest + coverage
+make check          # typecheck, Biome, jest, convex vitest
 ```
 
-| Tool | Frontend | Backend |
-| ---- | -------- | ------- |
-| Types | `npm run typecheck` (tsc 7) | `uv run mypy .` |
-| Lint/format | `npm run lint` / `npm run lint:fix` (Biome) | `uv run ruff check .` / `ruff format .` |
-| Tests | `npm test` / `npm run test:coverage` (Vitest) | `uv run pytest` / `uv run pytest --cov` |
+| Task | Command |
+| --- | --- |
+| Types | `npm run typecheck` |
+| Lint/format | `npm run lint` / `npm run lint:fix` (Biome) |
+| UI tests | `npm test` (jest-expo) |
+| Backend tests | `npm run test:convex` (Vitest + convex-test) |
+| Web build | `npx expo export --platform web` |
 
+Convex functions live in `frontend/convex/`. Generated types in `frontend/convex/_generated/` are
+committed; rerun `npx convex dev` after schema changes.

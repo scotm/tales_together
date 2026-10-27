@@ -1,20 +1,16 @@
 # Tales Together — Frontend
 
-Next.js 16 (App Router) + React 19 + TypeScript 7 + Tailwind CSS 4.
+Expo (React Native + React Native Web) app with Convex backend functions.
 
 ```bash
 npm install
-npm run dev
+npx convex dev     # needs the local Docker backend; see ../README.md
+npm run web        # http://localhost:8081
 ```
 
-Libraries: Zustand, TanStack Query, Framer Motion, clsx + tailwind-merge (`cn` in `src/lib/utils.ts`).
-
-## Tooling
-
-- **Type-check:** `npm run typecheck` (TypeScript 7).
-- **Lint + format:** `npm run lint` (Biome). Fix with `npm run lint:fix`.
-- **Tests:** `npm test` (Vitest + Testing Library, jsdom). Watch: `npm run test:watch`.
-- **Everything:** `npm run check`.
-
-TypeScript runs as a side-by-side install: `@typescript/native` provides the TS 7 `tsc`, while
-`typescript` is aliased to the TS 6 API that tooling still needs. `npx tsc` uses TS 7.
+- Routes: `src/app/` (Expo Router). Platform-specific files use `.web.tsx` / `.native.tsx`.
+- Convex functions: `convex/`. Generated types are committed.
+- Styling is React Native `StyleSheet` for now. NativeWind/Tailwind is not installed yet.
+- Checks: `npm run check` (typecheck → Biome → jest → Vitest).
+- One UI test: `npx jest src/path/to/file.test.tsx`
+- One backend test: `npx vitest run convex/stories.test.ts`

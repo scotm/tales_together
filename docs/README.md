@@ -56,6 +56,9 @@
    * `appendix.xhtml` (Character Trading Cards & "Behind the Scenes: Director's Notes")
    * `content.opf`, `nav.xhtml`, `container.xml`, and Automated `pytest` Validation
 
+**[Decisions & gotchas](./decisions.md)** — append-only log of vendor choices, verified API sharp
+edges, and open platform questions. Read before adding infrastructure.
+
 ---
 
 ## 🏗️ High-Level System Flow
