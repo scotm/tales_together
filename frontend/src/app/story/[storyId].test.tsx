@@ -77,6 +77,7 @@ it("reads back the prose, then offers to write once a card is picked", async () 
 
   expect(view.getByText("Mira held the string tight.")).toBeTruthy();
   expect(view.queryByText("🪄 Write Chapter!")).toBeNull();
+  expect(view.getByText("Next Chapter →")).toBeTruthy();
 
   (useQuery as jest.Mock).mockReturnValue(unpublished());
   await view.rerender(<StoryScreen />);

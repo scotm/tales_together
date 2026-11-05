@@ -21,9 +21,11 @@ export default function StoryScreen() {
   const pitchChapter = useAction(api.chapters.pitchChapter);
   const writeChapter = useAction(api.chapters.writeChapter);
   const chooseBeat = useMutation(api.chapters.chooseBeat);
+  const lockChapter = useMutation(api.chapters.lockChapter);
 
   const [pitching, setPitching] = useState(false);
   const [writing, setWriting] = useState(false);
+  const [locking, setLocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (story === undefined) {
@@ -42,7 +44,10 @@ export default function StoryScreen() {
     );
   }
 
-  const chapter = story.chapters[0];
+  const allLocked = story.chapters.every((entry) => entry.status === "LOCKED");
+  const chapter =
+    story.chapters.find((entry) => entry.status !== "LOCKED") ??
+    story.chapters[story.chapters.length - 1];
 
   async function deal() {
     if (!chapter) return;
@@ -66,6 +71,21 @@ export default function StoryScreen() {
       await chooseBeat({ chapterId: chapter._id, cardId });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not pick");
+    }
+  }
+
+  async function nextChapter() {
+    if (!chapter) return;
+    setLocking(true);
+    setError(null);
+    try {
+      await lockChapter({ chapterId: chapter._id });
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not turn the page",
+      );
+    } finally {
+      setLocking(false);
     }
   }
 
@@ -97,7 +117,9 @@ export default function StoryScreen() {
         {chapter ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              Chapter {chapter.index} · pick what happens
+              {chapter.paragraphs.length > 0
+                ? (chapter.title ?? `Chapter ${chapter.index}`)
+                : `Chapter ${chapter.index} · pick what happens`}
             </Text>
 
             {chapter.beatCards.length === 0 ? (
@@ -161,9 +183,6 @@ export default function StoryScreen() {
 
         {chapter && chapter.paragraphs.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {chapter.title ?? `Chapter ${chapter.index}`}
-            </Text>
             {chapter.paragraphs.map((paragraph, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: append-only list
               <Text key={`${chapter._id}-${index}`} style={styles.paragraph}>
@@ -172,6 +191,28 @@ export default function StoryScreen() {
             ))}
           </View>
         ) : null}
+
+        {chapter?.status === "REVIEWING" ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={nextChapter}
+            disabled={locking}
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.buttonLabel}>
+              {locking
+                ? "Turning..."
+                : chapter.index === story.story.totalChapters
+                  ? "🎉 Finish the Book!"
+                  : "Next Chapter →"}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {allLocked ? <Text style={styles.theEnd}>The End 🎉</Text> : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -220,5 +261,6 @@ const styles = StyleSheet.create({
   buttonPressed: { transform: [{ translateY: 4 }], borderBottomWidth: 2 },
   buttonLabel: { fontSize: 17, fontWeight: "700", color: "#1F1A17" },
   paragraph: { fontSize: 18, lineHeight: 28, color: "#292524" },
+  theEnd: { fontSize: 24, fontWeight: "800", color: "#1F1A17" },
   error: { color: "#B91C1C" },
 });

@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import type { ActionCtx } from "./_generated/server";
 import {
   action,
   internalAction,
@@ -44,8 +46,10 @@ export const getChapterContext = internalQuery({
     const prior = chapters
       .filter((entry) => entry.index < chapter.index)
       .sort((a, b) => a.index - b.index);
+    const next =
+      chapters.find((entry) => entry.index === chapter.index + 1) ?? null;
 
-    return { story, chapter, characters, prior };
+    return { story, chapter, characters, prior, next };
   },
 });
 
@@ -87,75 +91,86 @@ export const setBeatCards = internalMutation({
  * Prompt 2 (docs/03 §5). Idempotent on purpose: a second tap while cards
  * already exist must not spend another call.
  */
+// Explicit return type: the action reads `internal.chapters.*`, so inference
+// would be circular and generated types would degrade to `any`.
+async function runPitch(
+  ctx: ActionCtx,
+  chapterId: Id<"chapters">,
+): Promise<ParsedBeatCard[]> {
+  const { story, chapter, characters, prior } = await ctx.runQuery(
+    internal.chapters.getChapterContext,
+    { chapterId },
+  );
+
+  if (chapter.beatCards.length > 0) return chapter.beatCards;
+  if (chapter.status !== "PITCHING") {
+    throw new Error(
+      `chapter ${chapter.index} is ${chapter.status}, not PITCHING`,
+    );
+  }
+
+  const prompt = beatPitchPrompt({
+    storyTitle: story.title,
+    vibe: story.vibe,
+    setting: story.worldState.setting,
+    characters: characters.map((character) => ({
+      name: character.name,
+      role: character.role,
+      visualDescription: character.visualDescription,
+      quirk: character.quirk,
+    })),
+    availableItems: story.items
+      .filter((item) => item.status === "IN_BACKPACK")
+      .map((item) => ({ id: item.id, name: item.name })),
+    unresolvedThreads: story.worldState.unresolvedThreads,
+    priorChapters: prior.map((entry) => ({
+      index: entry.index,
+      title: entry.title,
+      summaryBullets: entry.summaryBullets,
+    })),
+    chapterIndex: chapter.index,
+    totalChapters: story.totalChapters,
+    arc: getArcRoleInstructions(chapter.index, story.totalChapters),
+  });
+
+  const raw = await getTextProvider("structured").complete({
+    ...prompt,
+    jsonSchema: BEAT_PITCH_SCHEMA,
+    maxTokens: 1200,
+  });
+
+  const pitch = parseBeatPitch(
+    raw,
+    new Set(story.items.map((item) => item.id)),
+  );
+
+  const verdict = await moderate(
+    pitch.cards
+      .map((card) => `${card.title}: ${card.kidFriendlyPitch}`)
+      .join("\n"),
+  );
+  if (!verdict.ok) {
+    throw new Error(`moderation rejected the pitch: ${verdict.reason}`);
+  }
+
+  await ctx.runMutation(internal.chapters.setBeatCards, {
+    chapterId,
+    recapOneLiner: pitch.recapOneLiner,
+    cards: pitch.cards,
+  });
+
+  return pitch.cards;
+}
+
 export const pitchChapter = action({
   args: { chapterId: v.id("chapters") },
-  // Explicit return type: the action reads `internal.chapters.*`, so inference
-  // would be circular and generated types would degrade to `any`.
-  handler: async (ctx, { chapterId }): Promise<ParsedBeatCard[]> => {
-    const { story, chapter, characters, prior } = await ctx.runQuery(
-      internal.chapters.getChapterContext,
-      { chapterId },
-    );
+  handler: (ctx, { chapterId }) => runPitch(ctx, chapterId),
+});
 
-    if (chapter.beatCards.length > 0) return chapter.beatCards;
-    if (chapter.status !== "PITCHING") {
-      throw new Error(
-        `chapter ${chapter.index} is ${chapter.status}, not PITCHING`,
-      );
-    }
-
-    const prompt = beatPitchPrompt({
-      storyTitle: story.title,
-      vibe: story.vibe,
-      setting: story.worldState.setting,
-      characters: characters.map((character) => ({
-        name: character.name,
-        role: character.role,
-        visualDescription: character.visualDescription,
-        quirk: character.quirk,
-      })),
-      availableItems: story.items
-        .filter((item) => item.status === "IN_BACKPACK")
-        .map((item) => ({ id: item.id, name: item.name })),
-      unresolvedThreads: story.worldState.unresolvedThreads,
-      priorChapters: prior.map((entry) => ({
-        index: entry.index,
-        title: entry.title,
-        summaryBullets: entry.summaryBullets,
-      })),
-      chapterIndex: chapter.index,
-      totalChapters: story.totalChapters,
-      arc: getArcRoleInstructions(chapter.index, story.totalChapters),
-    });
-
-    const raw = await getTextProvider("structured").complete({
-      ...prompt,
-      jsonSchema: BEAT_PITCH_SCHEMA,
-      maxTokens: 1200,
-    });
-
-    const pitch = parseBeatPitch(
-      raw,
-      new Set(story.items.map((item) => item.id)),
-    );
-
-    const verdict = await moderate(
-      pitch.cards
-        .map((card) => `${card.title}: ${card.kidFriendlyPitch}`)
-        .join("\n"),
-    );
-    if (!verdict.ok) {
-      throw new Error(`moderation rejected the pitch: ${verdict.reason}`);
-    }
-
-    await ctx.runMutation(internal.chapters.setBeatCards, {
-      chapterId,
-      recapOneLiner: pitch.recapOneLiner,
-      cards: pitch.cards,
-    });
-
-    return pitch.cards;
-  },
+/** Only internal functions may be scheduled; same body as the client call. */
+export const pitchNextChapter = internalAction({
+  args: { chapterId: v.id("chapters") },
+  handler: (ctx, { chapterId }) => runPitch(ctx, chapterId),
 });
 
 /** The child's card pick. Kept so the prose prompt has one fixed target. */
@@ -414,7 +429,7 @@ export const applyExtraction = internalMutation({
 export const extractChapter = internalAction({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, { chapterId }): Promise<void> => {
-    const { story, chapter, characters } = await ctx.runQuery(
+    const { story, chapter, characters, next } = await ctx.runQuery(
       internal.chapters.getChapterContext,
       { chapterId },
     );
@@ -451,9 +466,49 @@ export const extractChapter = internalAction({
         chapterId,
         ...extraction,
       });
+
+      // Have the next chapter's cards ready before the child taps "Next".
+      if (next && next.beatCards.length === 0) {
+        await ctx.scheduler.runAfter(0, internal.chapters.pitchNextChapter, {
+          chapterId: next._id,
+        });
+      }
     } catch (cause) {
       await ctx.runMutation(internal.chapters.failExtraction, { chapterId });
       throw cause;
+    }
+  },
+});
+
+/**
+ * "Next Chapter!" — the only transition that advances the book. Locking flips
+ * the story to IN_PROGRESS on the first chapter and COMPLETED on the last.
+ */
+export const lockChapter = mutation({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    const chapter = await ctx.db.get(chapterId);
+    if (!chapter) throw new Error("chapter not found");
+    if (chapter.status === "LOCKED") return;
+
+    if (chapter.paragraphs.length === 0) {
+      throw new Error("chapter has no prose to lock");
+    }
+
+    const story = await ctx.db.get(chapter.storyId);
+    if (!story) throw new Error("story not found");
+
+    await ctx.db.patch(chapterId, { status: "LOCKED" });
+    await ctx.db.patch(story._id, {
+      status:
+        chapter.index === story.totalChapters ? "COMPLETED" : "IN_PROGRESS",
+    });
+
+    // The EPUB needs the extraction even if it failed while the child read on.
+    if (chapter.extractionStatus !== "DONE") {
+      await ctx.scheduler.runAfter(0, internal.chapters.extractChapter, {
+        chapterId,
+      });
     }
   },
 });

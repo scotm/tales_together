@@ -40,6 +40,27 @@ run, and `pitchChapter` only needs JSON of the right shape to prove the plumbing
 
 **Revisit when:** a dev needs local prose worth reading, or CI needs to run without the Mac.
 
+## Five-chapter loop — accepted, 2026-11-05
+
+**Decision:** `chapters.lockChapter` is the only transition that advances the book. It refuses a
+chapter with no prose, is idempotent, flips the story to `IN_PROGRESS` on the first lock and
+`COMPLETED` on the last, schedules a retry when extraction is not `DONE`, and the extraction action
+pre-pitches chapter N+1 so its cards are waiting.
+
+**Why:** one mutation per transition keeps the UI from ever seeing half a page turn, and prefetching
+the next cards hides a model call behind reading time.
+
+**Gotchas (verified 2026-11-05 on a full five-chapter run):**
+
+- Scheduled functions must be internal. `pitchChapter` stays public for the client, so the scheduler
+  calls a `pitchNextChapter` internal alias over the same body; a public action is not schedulable.
+- Word counts across a real book: 442, 274, 384, 294, 390. Only chapter 1 met the 400–550 matrix
+  target; the lint checks read quality, not length, so nothing rejects a short chapter.
+- Chapter titles come from extraction, so the reader shows "Chapter 3" until extraction lands.
+
+**Revisit when:** short chapters reach a reader (prompt nudge or a soft length gate), or a locked
+chapter's prose needs to be readable again (today the screen only shows the active chapter).
+
 ## Chapter extraction — accepted, 2026-11-05
 
 **Decision:** Prompt 4 runs as an `internalAction` scheduled by `writeChapter` the moment prose is

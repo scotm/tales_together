@@ -124,3 +124,59 @@ test("a malformed extraction is rejected before anything is written", async () =
   expect(chapter?.title).toBeUndefined();
   expect(story?.worldState.unresolvedThreads).toEqual([sample.centralProblem]);
 });
+
+test("locking the first chapter moves the story to IN_PROGRESS", async () => {
+  const { t, storyId, chapterId } = await seedStory();
+  await t.mutation(internal.chapters.setChapterProse, {
+    chapterId,
+    paragraphs: ["Mira ran."],
+  });
+
+  await t.mutation(api.chapters.lockChapter, { chapterId });
+  // Idempotent: a second tap must not move the story backwards.
+  await t.mutation(api.chapters.lockChapter, { chapterId });
+
+  const { chapter, story } = await t.run(async (ctx) => ({
+    chapter: await ctx.db.get(chapterId),
+    story: await ctx.db.get(storyId),
+  }));
+  expect(chapter?.status).toBe("LOCKED");
+  expect(story?.status).toBe("IN_PROGRESS");
+});
+
+test("five locked chapters finish the book in order", async () => {
+  const { t, storyId } = await seedStory();
+  const chapters = await t.run(async (ctx) =>
+    ctx.db
+      .query("chapters")
+      .withIndex("by_story", (q) => q.eq("storyId", storyId))
+      .collect(),
+  );
+  expect(chapters.map((entry) => entry.index)).toEqual([1, 2, 3, 4, 5]);
+
+  for (const entry of chapters) {
+    await t.mutation(internal.chapters.setChapterProse, {
+      chapterId: entry._id,
+      paragraphs: [`Chapter ${entry.index} prose.`],
+    });
+    await t.mutation(api.chapters.lockChapter, { chapterId: entry._id });
+  }
+
+  const after = await t.run(async (ctx) =>
+    ctx.db
+      .query("chapters")
+      .withIndex("by_story", (q) => q.eq("storyId", storyId))
+      .collect(),
+  );
+  expect(after.every((entry) => entry.status === "LOCKED")).toBe(true);
+  const story = await t.run(async (ctx) => ctx.db.get(storyId));
+  expect(story?.status).toBe("COMPLETED");
+});
+
+test("a chapter with no prose cannot be locked", async () => {
+  const { t, chapterId } = await seedStory();
+
+  await expect(
+    t.mutation(api.chapters.lockChapter, { chapterId }),
+  ).rejects.toThrow(/no prose/);
+});
