@@ -2,147 +2,159 @@
 
 ## 1. Frontend Stack & Design Principles
 
-* **Framework:** React + TypeScript (Next.js for web; Expo / React Native for native tablet apps).
-* **Styling:** Tailwind CSS with a "chunky physical push-button" utility pattern.
-* **Animation:** `framer-motion` (web) / `react-native-reanimated` (Expo) for spring physics, card flips, and media cross-fades.
-* **State:** `zustand` for the client-side story director state machine; `TanStack Query` for server data.
-* **Real-Time:** Server-Sent Events (SSE) for streaming chapter prose + WebSocket/SSE events for async media readiness (`ILLUSTRATION_READY`, `VIDEO_READY`).
+* **Framework:** Expo (React Native 0.88 + Expo Router + React Native Web). One codebase for web,
+  iOS and Android. No Next.js, no RSC, no App Router.
+* **Styling:** React Native `StyleSheet` with design tokens in one module. Tailwind classes and
+  NativeWind are **not installed**; the class strings that appear in this document's component
+  sketches are a shorthand for those tokens, not code to compile. The token mapping is below.
+* **Animation:** `react-native-reanimated` (installed) for spring physics and card flips.
+  `framer-motion` is web-only and is not used.
+* **State:** Convex reactive queries own all server truth. One `useReducer` + context owns the
+  ephemeral director UI (selected card, wand target, calm mode). There is no Zustand store and no
+  TanStack Query: `convex/react` already pushes, caches and refetches.
+* **Real-Time:** none of ours. A Convex action appends a paragraph or writes `illustrationFileId`;
+  the subscribed query re-renders. No SSE, no WebSocket, no client polling.
 
 ### The Tactile Push-Button Pattern
-Instead of flat buttons, every card, backpack item, and toggle uses a physical 3D "depress" pattern so the UI feels like a board game under a child's thumb:
 
-* **Resting state:** `border-2 border-stone-900 border-b-[6px] translate-y-0`
-* **Pressed state:** `active:border-b-2 active:translate-y-[4px] transition-all duration-75`
+Instead of flat buttons, every card, backpack item, and toggle uses a physical 3D "depress" pattern so
+the UI feels like a board game under a child's thumb. In StyleSheet terms:
+
+```ts
+// src/lib/tokens.ts
+export const tactile = {
+  resting: { borderBottomWidth: 6, borderBottomColor: "#1c1917", transform: [{ translateY: 0 }] },
+  pressed: { borderBottomWidth: 2, transform: [{ translateY: 4 }] },
+} as const;
+```
+
+Pressable's `style` callback swaps the two, and the accompanying haptic comes from §2.
+
+### Server truth vs. local truth
+
+| Data | Owner | Read on the client |
+| :--- | :--- | :--- |
+| Story, chapters, paragraph stream, illustrations, items | Convex | `useQuery(api.stories.get, { storyId })` |
+| Beat cards, chosen beat, extraction status | Convex | same query |
+| Calm bedtime mode, open drawer, selected card while directing, wand menu target | React state | `useStoryDirector()` |
+
+The chapter's status is never duplicated in the client store. If the UI needs to know whether writing
+has started, it reads `chapter.status`.
 
 ---
 
 ## 2. Micro-Interaction Hook (`useTactileFeedback.ts`)
 
-Gives every tap a physical sensation (mobile haptics) plus instant read-aloud for pre-readers who cannot yet read the UI cards.
+Gives every tap a physical sensation plus instant read-aloud for pre-readers who cannot yet read the
+UI cards.
 
-```tsx
+```ts
 // src/hooks/useTactileFeedback.ts
 import { useCallback } from "react";
+import { Platform } from "react-native";
+import * as Haptics from "expo-haptics";
+import * as Speech from "expo-speech";
 
 export function useTactileFeedback(calmMode = false) {
-  const triggerHaptic = useCallback((pattern: number | number[] = 15) => {
-    if (typeof window !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate(pattern);
-    }
-  }, []);
+  const triggerHaptic = useCallback(
+    (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
+      if (Platform.OS === "web") {
+        navigator.vibrate?.(15); // no-op on desktop browsers
+        return;
+      }
+      void Haptics.impactAsync(style);
+    },
+    [],
+  );
 
-  // Zero-latency Read-Aloud for Pre-Readers (local SpeechSynthesis, or swap for cached neural TTS)
-  const speakText = useCallback((text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = calmMode ? 0.88 : 0.95; // Slightly slower & calmer at bedtime
-    utterance.pitch = 1.05;
-    window.speechSynthesis.speak(utterance);
-  }, [calmMode]);
+  // Zero-latency read-aloud. expo-speech wraps SpeechSynthesis on web and the
+  // platform engine on native, so there is no second implementation.
+  const speakText = useCallback(
+    (text: string) => {
+      void Speech.stop();
+      void Speech.speak(text, { rate: calmMode ? 0.88 : 0.95, pitch: 1.05 });
+    },
+    [calmMode],
+  );
 
   return { triggerHaptic, speakText };
 }
 ```
 
+Web browsers ignore haptics unless the user has interacted with the page; that is fine, the visuals
+carry the press.
+
 ---
 
-## 3. Client-Side State Machine (`useStoryDirectorStore.ts`)
+## 3. Client-Side Director State (`storyDirectorContext.tsx`)
 
-Coordinates the Director's Chair, Backpack Inventory, SSE Paragraph Stream, and the 3-Stage Media Upgrade (`PAINTING` $\rightarrow$ `STILL_READY` $\rightarrow$ `VIDEO_READY`).
+Coordinates the Director's Chair, the Backpack, and which paragraph the wand menu is open on. Server
+data comes from the Convex query; this store holds only what the server does not know.
 
 ```tsx
-// src/store/useStoryDirectorStore.ts
-import { create } from "zustand";
+// src/store/storyDirectorContext.tsx
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useReducer,
+  type Dispatch,
+  type ReactNode,
+} from "react";
+import type { Id } from "../../convex/_generated/dataModel";
 
 export type BeatStyle = "BOLD_ACTION" | "CLEVER_TRICK" | "SILLY_TWIST" | "KID_WILDCARD";
-export type MediaStage = "PAINTING" | "STILL_READY" | "VIDEO_READY";
 export type RemixMode = "MAKE_FUNNIER" | "MORE_DIALOGUE" | "ADD_SENSORY" | "LESS_SCARY";
 
-// NAMING CONVENTION: the frontend store uses camelCase (cardId, kidFriendlyPitch, useItemId).
-// The Django API speaks snake_case (card_id, kid_friendly_pitch, use_item_id) — see the
-// StoryBeatCard / DirectorModifiers Pydantic schemas in 02-backend-and-video-pipeline.md.
-// The conversion happens once, at the API boundary (e.g. djangorestframework-camel-case or a
-// thin fetch wrapper), so neither side ever mixes conventions.
+// Naming is camelCase end to end: tables, validators, prompts and client all share
+// one convention, so nothing converts at a boundary.
 export interface StoryBeatCard {
   cardId: string;
   style: BeatStyle;
   title: string;
   kidFriendlyPitch: string;
   iconEmoji: string;
-  suggestedItemId?: string | null;
+  suggestedItemId?: string;
 }
 
 export interface BackpackItem {
-  id: string;
+  id: string;   // catalog id, e.g. "item_whisk"
   name: string;
   emoji: string;
   status: "IN_BACKPACK" | "RESERVED_THIS_CHAPTER" | "USED";
 }
 
 export interface DirectorModifiers {
-  useItemId: string | null;
-  spotlightCharacterId: string | null;
+  useItemId: string | null;                              // catalog id
+  spotlightCharacterId: Id<"characters"> | null;         // document id
   weatherOrMood: "SUNNY" | "STORMY" | "SPOOKY_NIGHT" | "BUBBLY_CHAOS" | null;
   soundEffectsBoost: boolean;
   endingStyle: "CLIFFHANGER" | "COZY_PAUSE";
 }
 
-interface StoryDirectorState {
-  // Global UI Posture
+interface State {
   calmBedtimeMode: boolean;
-  toggleCalmMode: () => void;
-
-  // Chapter State Machine
-  chapterIndex: number;
-  totalChapters: number;
-  phase: "DIRECTING" | "STREAMING_PROSE" | "REVIEWING";
-  recapOneLiner: string;
-
-  // Director's Chair State
   beatCards: StoryBeatCard[];
   selectedCardId: string | null;
-  backpack: BackpackItem[];
+  backpack: BackpackItem[];   // seeded from the story's items at setup
   modifiers: DirectorModifiers;
-
-  // Live Reading & Media State
-  chapterTitle: string;
-  paragraphs: string[];
   remixingParagraphIndex: number | null;
-  mediaStage: MediaStage;
-  illustrationUrl: string | null;
-  videoUrl: string | null;
-
-  // Actions
-  selectBeatCard: (cardId: string) => void;
-  addWildcardBeat: (card: StoryBeatCard) => void;
-  toggleBackpackItemForChapter: (itemId: string) => void;
-  updateModifier: <K extends keyof DirectorModifiers>(key: K, value: DirectorModifiers[K]) => void;
-
-  // Streaming & WebSocket Handlers
-  startChapterStream: () => void;
-  appendStreamedParagraph: (paragraph: string) => void;
-  replaceRemixedParagraph: (index: number, newText: string) => void;
-  setIllustrationReady: (url: string) => void;
-  setVideoReady: (url: string) => void;
 }
 
-export const useStoryDirectorStore = create<StoryDirectorState>((set) => ({
+type Action =
+  | { type: "toggleCalmMode" }
+  | { type: "setBeatCards"; cards: StoryBeatCard[] }
+  | { type: "selectBeatCard"; cardId: string }
+  | { type: "addWildcardBeat"; card: StoryBeatCard }
+  | { type: "toggleBackpackItem"; itemId: string }
+  | { type: "updateModifier"; patch: Partial<DirectorModifiers> }
+  | { type: "openWand"; index: number | null };
+
+const initial: State = {
   calmBedtimeMode: false,
-  toggleCalmMode: () => set((s) => ({ calmBedtimeMode: !s.calmBedtimeMode })),
-
-  chapterIndex: 2,
-  totalChapters: 5,
-  phase: "DIRECTING",
-  recapOneLiner: "Previously: Barnaby chased the floating Royal Sponge Cake into the Kelp Forest!",
-
   beatCards: [],
   selectedCardId: null,
-  backpack: [
-    { id: "item_1", name: "Golden Whisk", emoji: "✨", status: "IN_BACKPACK" },
-    { id: "item_2", name: "Glow-Jam Jar", emoji: "🫙", status: "IN_BACKPACK" },
-    { id: "item_3", name: "Grandma's Kazoo", emoji: "🎺", status: "USED" },
-  ],
+  backpack: [],
   modifiers: {
     useItemId: null,
     spotlightCharacterId: null,
@@ -150,75 +162,104 @@ export const useStoryDirectorStore = create<StoryDirectorState>((set) => ({
     soundEffectsBoost: true,
     endingStyle: "CLIFFHANGER",
   },
-
-  chapterTitle: "",
-  paragraphs: [],
   remixingParagraphIndex: null,
-  mediaStage: "PAINTING",
-  illustrationUrl: null,
-  videoUrl: null,
+};
 
-  selectBeatCard: (cardId) =>
-    set((state) => {
-      const card = state.beatCards.find((c) => c.cardId === cardId);
-      const suggestedItem = card?.suggestedItemId || state.modifiers.useItemId;
+// A used item can never be reserved again; everything else follows the selection.
+const withSelection = (items: BackpackItem[], itemId: string | null) =>
+  items.map((item) =>
+    item.status === "USED"
+      ? item
+      : {
+          ...item,
+          status: item.id === itemId ? ("RESERVED_THIS_CHAPTER" as const) : ("IN_BACKPACK" as const),
+        },
+  );
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case "toggleCalmMode":
+      return { ...state, calmBedtimeMode: !state.calmBedtimeMode };
+
+    case "setBeatCards":
+      return { ...state, beatCards: action.cards };
+
+    case "selectBeatCard": {
+      const card = state.beatCards.find((c) => c.cardId === action.cardId);
+      // An item the child already tapped outranks the card's suggestion.
+      const itemId =
+        state.modifiers.useItemId ?? card?.suggestedItemId ?? null;
       return {
-        selectedCardId: cardId,
-        modifiers: { ...state.modifiers, useItemId: suggestedItem ?? null },
-        backpack: state.backpack.map((item) =>
-          item.status === "USED"
-            ? item
-            : {
-                ...item,
-                status: item.id === suggestedItem ? "RESERVED_THIS_CHAPTER" : "IN_BACKPACK",
-              }
-        ),
+        ...state,
+        selectedCardId: action.cardId,
+        modifiers: { ...state.modifiers, useItemId: itemId },
+        backpack: withSelection(state.backpack, itemId),
       };
-    }),
+    }
 
-  addWildcardBeat: (card) =>
-    set((state) => ({
-      beatCards: [...state.beatCards.filter((c) => c.style !== "KID_WILDCARD"), card],
-      selectedCardId: card.cardId,
-    })),
-
-  toggleBackpackItemForChapter: (itemId) =>
-    set((state) => {
-      const isCurrentlySelected = state.modifiers.useItemId === itemId;
-      const nextItemId = isCurrentlySelected ? null : itemId;
+    case "addWildcardBeat":
       return {
-        modifiers: { ...state.modifiers, useItemId: nextItemId },
-        backpack: state.backpack.map((item) =>
-          item.status === "USED"
-            ? item
-            : {
-                ...item,
-                status: item.id === nextItemId ? "RESERVED_THIS_CHAPTER" : "IN_BACKPACK",
-              }
-        ),
+        ...state,
+        beatCards: [
+          ...state.beatCards.filter((c) => c.style !== "KID_WILDCARD"),
+          action.card,
+        ],
+        selectedCardId: action.card.cardId,
       };
-    }),
 
-  updateModifier: (key, value) =>
-    set((state) => ({ modifiers: { ...state.modifiers, [key]: value } })),
+    case "toggleBackpackItem": {
+      const next = state.modifiers.useItemId === action.itemId ? null : action.itemId;
+      return {
+        ...state,
+        modifiers: { ...state.modifiers, useItemId: next },
+        backpack: withSelection(state.backpack, next),
+      };
+    }
 
-  startChapterStream: () =>
-    set({ phase: "STREAMING_PROSE", paragraphs: [], mediaStage: "PAINTING" }),
+    case "updateModifier":
+      return { ...state, modifiers: { ...state.modifiers, ...action.patch } };
 
-  appendStreamedParagraph: (paragraph) =>
-    set((state) => ({ paragraphs: [...state.paragraphs, paragraph] })),
+    case "openWand":
+      return { ...state, remixingParagraphIndex: action.index };
+  }
+}
 
-  replaceRemixedParagraph: (index, newText) =>
-    set((state) => {
-      const updated = [...state.paragraphs];
-      updated[index] = newText;
-      return { paragraphs: updated, remixingParagraphIndex: null };
-    }),
+const StoryDirectorContext = createContext<{
+  state: State;
+  dispatch: Dispatch<Action>;
+} | null>(null);
 
-  setIllustrationReady: (url) => set({ illustrationUrl: url, mediaStage: "STILL_READY" }),
-  setVideoReady: (url) => set({ videoUrl: url, mediaStage: "VIDEO_READY" }),
-}));
+export function StoryDirectorProvider(props: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, initial);
+  const value = useMemo(() => ({ state, dispatch }), [state]);
+  return (
+    <StoryDirectorContext.Provider value={value}>
+      {props.children}
+    </StoryDirectorContext.Provider>
+  );
+}
+
+export function useStoryDirector() {
+  const value = useContext(StoryDirectorContext);
+  if (!value) throw new Error("useStoryDirector must be used inside StoryDirectorProvider");
+  return value;
+}
 ```
+
+**What is deliberately absent:** `paragraphs`, `chapterTitle`, `mediaStage`, `illustrationUrl`,
+`videoUrl`. Those are server fields. The Living Storybook Page reads
+`chapter.paragraphs`, `chapter.title` and `chapter.illustrationFileId` straight from the query, and
+derives the media stage from what exists:
+
+```ts
+const stage = chapter.videoFileId ? "VIDEO_READY"
+  : chapter.illustrationFileId ? "STILL_READY"
+  : chapter.status === "WRITING" ? "PAINTING"
+  : "EMPTY";
+```
+
+Pushing a paragraph is `generateChapter` appending to `chapters.paragraphs`; remixing is a mutation
+that replaces one index. Neither path touches this reducer.
 
 ---
 
@@ -392,6 +433,19 @@ The front door of the app. Combines:
 * **Left (Sticky):** The **Live 3D Character Trading Card** updating in real time with stuck-on Quirk Stickers and a 3-pocket backpack preview.
 * **Right:** Three playful stations — the **Padlock World Slot Machine**, the **Character Forge** (Name-O-Matic, species, outfit, sticker sheet, "Snap Your Real Toy" camera button), and the **3-Pocket Backpack Conveyor Belt**.
 
+> **Reading these sketches (§5–§10).** They carry the behaviour, copy and layout; they are not
+> compilable as written. Port each one with this mapping:
+>
+> | In the sketch | In the app |
+> | :--- | :--- |
+> | `useStoryDirectorStore()` and its server fields (`paragraphs`, `chapterTitle`, `mediaStage`, `phase`, `chapterIndex`, `totalChapters`, `illustrationUrl`, `videoUrl`) | `useQuery(api.stories.get, { storyId })` |
+> | store actions (`selectBeatCard`, `toggleBackpackItemForChapter`, `updateModifier`, `addWildcardBeat`) | `dispatch({ type: … })` on the reducer in §3 |
+> | `startChapterStream`, `appendStreamedParagraph`, `setIllustrationReady`, `setVideoReady`, `replaceRemixedParagraph` | gone: the mutation writes to `chapters`, the query re-renders |
+> | `className="…"` Tailwind strings | `style={[styles.x, calmMode && styles.xNight]}` from `src/lib/tokens.ts` |
+> | `motion.div` / `AnimatePresence` (`framer-motion`) | `Animated.View` / `entering={FadeIn}` (`react-native-reanimated`) |
+> | `<div>`, `<button>`, `<img>`, `<video>` | `View`, `Pressable`, `Image`, `expo-video` |
+> | `navigator.vibrate` / `speechSynthesis` | `expo-haptics` / `expo-speech` (see §2) |
+
 ```tsx
 // src/components/ToyBoxCreator.tsx
 import React, { useState, useMemo } from "react";
@@ -409,25 +463,25 @@ import {
 } from "../data/toyBoxCatalog";
 import { useTactileFeedback } from "../hooks/useTactileFeedback";
 
+// Passed straight to `api.stories.create`; the argument validator in convex/schema.ts
+// is the contract, so this interface must stay a subset of it.
 export interface ToyBoxLaunchPayload {
-  world_state: {
+  world: {
     setting: string;
-    central_problem: string;
-    inventory: Array<{
-      id: string;
-      name: string;
-      emoji: string;
-      prompt_fragment: string;
-      status: "IN_BACKPACK";
-    }>;
-    unresolved_threads: string[];
+    centralProblem: string;
+    unresolvedThreads: string[];
   };
+  items: Array<{
+    id: string;           // catalog id, e.g. "item_whisk"
+    name: string;
+    status: "IN_BACKPACK";
+  }>;
   protagonist: {
     name: string;
     role: "PROTAGONIST";
     quirk: string;
-    visual_description: string;
-    real_toy_photo_url: string | null;
+    visualDescription: string;
+    realToyPhotoFileId: string | null; // post-v0
   };
 }
 
@@ -511,8 +565,8 @@ export const ToyBoxCreator: React.FC<{ onLaunchStory: (payload: ToyBoxLaunchPayl
     }
   };
 
-  // "Snap Your Real Toy!" -> In production, POST the file to /api/characters/scan-toy/
-  // which runs the Vision LLM (ScannedToyCharacterSheet) and returns a pre-filled card.
+  // "Snap Your Real Toy!" -> post-v0: upload with `generateUploadUrl`, then call the
+  // `scanToy` action (Vision LLM + ScannedToyCharacterSheet) and pre-fill the card.
   const handleToyPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -924,29 +978,27 @@ export const ToyBoxCreator: React.FC<{ onLaunchStory: (payload: ToyBoxLaunchPayl
             </div>
           </section>
 
-          {/* LAUNCH BUTTON: COMPILES TOY BOX INTO CANONICAL DJANGO PAYLOAD */}
+          {/* LAUNCH BUTTON: COMPILES THE TOY BOX INTO THE `stories.create` ARGS */}
           <button
             onClick={() => {
               triggerHaptic([30, 60, 40]);
               onLaunchStory({
-                world_state: {
+                world: {
                   setting: currentSetting.promptFragment,
-                  central_problem: currentProblem.promptFragment,
-                  inventory: packedItems.map((i) => ({
-                    id: i.id,
-                    name: i.label,
-                    emoji: i.emoji,
-                    prompt_fragment: i.promptFragment,
-                    status: "IN_BACKPACK",
-                  })),
-                  unresolved_threads: [currentProblem.label],
+                  centralProblem: currentProblem.promptFragment,
+                  unresolvedThreads: [currentProblem.label],
                 },
+                items: packedItems.map((i) => ({
+                  id: i.id, // catalog id: item_whisk, item_jam, …
+                  name: i.label,
+                  status: "IN_BACKPACK",
+                })),
                 protagonist: {
                   name: heroFullName,
                   role: "PROTAGONIST",
                   quirk: quirk.promptFragment,
-                  visual_description: canonicalVisualPrompt,
-                  real_toy_photo_url: realToyPhotoUrl,
+                  visualDescription: canonicalVisualPrompt,
+                  realToyPhotoFileId: realToyPhotoFileId,
                 },
               });
             }}
@@ -962,10 +1014,16 @@ export const ToyBoxCreator: React.FC<{ onLaunchStory: (payload: ToyBoxLaunchPayl
 };
 ```
 
-### How "Snap Your Real Toy" Connects to the Backend
-1. **Vision Extraction:** `POST /api/characters/scan-toy/` sends the photo to `gemini-2.5-flash` or `grok-2-vision` with `response_format=ScannedToyCharacterSheet` (see `02-backend-and-video-pipeline.md`).
-2. **Instant UI Update:** The Trading Card updates with the toy's photo, auto-populates `canonical_visual_description`, and slaps the toy's custom Quirk Sticker on the card.
-3. **Character Reference Sheet:** In the background, the photo is passed as an image reference with `story.art_style_prompt` (*"Turn this toy into a warm watercolour storybook character portrait"*), saved to `character.reference_image` so the Grok/Veo pipeline can animate the real toy across key chapters.
+### How "Snap Your Real Toy" Connects to the Backend (post-v0)
+
+1. **Vision Extraction:** the photo goes to `generateUploadUrl`, then the `scanToy` action sends the
+   stored file to a vision model with the `ScannedToyCharacterSheet` JSON schema (see
+   `02-backend-and-video-pipeline.md` §4).
+2. **Instant UI Update:** the Trading Card updates with the toy's photo, auto-populates
+   `visualDescription`, and slaps the toy's custom Quirk Sticker on the card.
+3. **Character Reference Sheet:** in the background, the photo is passed as an image reference with
+   `story.artStyle` (*"Turn this toy into a warm watercolour storybook character portrait"*), stored
+   as `character.referenceFileId` so the media pipeline can animate the real toy across key chapters.
 
 ---
 
@@ -1112,7 +1170,8 @@ export const DirectorsChair: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
 
   // Voice-to-Wildcard Card flow.
-  // In production: capture audio via MediaRecorder -> POST /api/chapters/{id}/wildcard/
+  // In production: capture audio via MediaRecorder -> generateUploadUrl -> the
+  // `normaliseWildcard` action (Prompt 1) -> api.chapters.addWildcardCard
   // -> Whisper STT -> Prompt 1 (Voice-Wildcard Normaliser) -> StoryBeatCard
   const handleMicPressEnd = async () => {
     setIsRecording(false);
@@ -1417,7 +1476,8 @@ export const LivingStorybookPage: React.FC = () => {
   const [activeParagraphIdx, setActiveParagraphIdx] = useState<number | null>(null);
   const [isRemixingIdx, setIsRemixingIdx] = useState<number | null>(null);
 
-  // In production: POST /api/chapters/{id}/remix-paragraph/ with { index, mode } -> Prompt 5
+  // In production: call the `remixParagraph` action with { chapterId, index, mode } -> Prompt 5,
+  // then the mutation replaces chapters.paragraphs[index].
   const handleWandRemix = async (index: number, mode: RemixMode) => {
     triggerHaptic([15, 30, 15]);
     setIsRemixingIdx(index);
@@ -1587,6 +1647,6 @@ export const LivingStorybookPage: React.FC = () => {
 
 ## 10. Extra Polish Gems
 
-1. **The "Sign Your Book" Canvas (`react-signature-canvas` $\rightarrow$ SVG):** At the Publishing Ceremony, the child signs their name on a parchment card. Export stroke paths as clean `<svg viewBox="...">` markup, save to `story.author_signature_svg`, and inject into `titlepage.xhtml` inside the EPUB.
-2. **Pre-Fetching Chapter $N+1$ Cards During Reading:** While the child reads and remixes Chapter $N$, the frontend silently fetches the pre-generated `beatCards` for Chapter $N+1$ into the Zustand store so the next Director's Chair appears instantly.
-3. **CSS-Only 3D Book Spine at the Publishing Ceremony:** Wrap the cover image in a 3D perspective container (`transform-style: preserve-3d; transform: rotateY(-25deg)`) with pseudo-elements for page edges and spine. Let the child drag to spin their finished book before triggering the `.epub` download or "Open in Apple Books" sheet.
+1. **The "Sign Your Book" Canvas (post-v0; `react-native-svg` + gesture path capture):** at the Publishing Ceremony the child signs their name on a parchment card. Export the stroke paths as clean `<svg viewBox="...">` markup, sanitise it, save to `story.authorSignatureSvg`, and let `renderTitlepage` inject it. v0 uses a typed author name instead.
+2. **Pre-generating Chapter $N+1$ cards during reading:** the extraction action schedules the pitch action with `ctx.scheduler`, so `chapters[N+1].beatCards` already exists when the child taps "Next Chapter!". The client does no prefetching of its own; the query just has the data.
+3. **CSS-Only 3D Book Spine at the Publishing Ceremony:** Wrap the cover image in a 3D perspective container (`transform-style: preserve-3d; transform: rotateY(-25deg)`) with pseudo-elements for page edges and spine. Let the child drag to spin their finished book before triggering the `.epub` download or "Open in Apple Books" sheet. On native this is a pair of `Animated.View`s rather than CSS.

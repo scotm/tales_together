@@ -1,15 +1,32 @@
 # 05 — Deterministic EPUB 3 Compiler & XHTML/CSS Templates
 
-## 1. Why a Custom `zipfile` + `Jinja2` Compiler?
+## 1. Why `JSZip` + Template Functions
 
-While libraries like `ebooklib` are popular for simple text EPUBs, they were designed around EPUB 2 and are clumsy with modern **EPUB 3** features: HTML5 `<video>` manifests, custom `properties` attributes, inline SVG signatures, and strict asset ordering.
+While libraries like `ebooklib` and `epub-gen` are popular for simple text EPUBs, they were designed
+around EPUB 2 and are clumsy with modern **EPUB 3** features: HTML5 `<video>` manifests, custom
+`properties` attributes, inline SVG signatures, and strict asset ordering.
 
-Because an `.epub` is simply a specialised ZIP archive, writing a ~100-line `Epub3Compiler` with Python's built-in `zipfile` and `Jinja2` gives **100% control** over validation and output, with zero third-party quirks. You also never want an LLM writing XML—one unclosed tag causes Apple Books or Kindle to reject the file. The compiler is fully **deterministic and template-driven**; the LLM only ever supplies plain-text paragraphs that are escaped by Jinja2's `autoescape`.
+Because an `.epub` is simply a specialised ZIP archive, a ~150-line `epub.ts` using **JSZip** plus
+plain template functions gives **100% control** over validation and output, with zero third-party
+quirks. You also never want an LLM writing XML: one unclosed tag causes Apple Books to reject the
+file. The compiler is fully **deterministic and template-driven**; the LLM only ever supplies plain
+text paragraphs, and every template escapes untrusted text through one `escapeHtml` helper.
+
+It runs as a **Convex Node action**, so there is no second language and no template environment to
+configure: a template is a function that returns a string.
 
 ### The Three Strict EPUB Byte-Order Rules
-1. The very first entry in the archive **must** be an uncompressed (`ZIP_STORED`) file named `mimetype` containing exactly `application/epub+zip` with no trailing newline.
+
+1. The very first entry in the archive **must** be an uncompressed (`STORE`) file named `mimetype`
+   containing exactly `application/epub+zip` with no trailing newline.
 2. `META-INF/container.xml` points to `OEBPS/content.opf`.
-3. `OEBPS/content.opf` lists **every** XHTML, CSS, font, image, and MP4 file in `<manifest>` with its exact MIME type, and orders the chapters in `<spine>`. Strict readers refuse to load media that exists in the ZIP but is missing from the manifest.
+3. `OEBPS/content.opf` lists **every** XHTML, CSS, font, image, and MP4 file in `<manifest>` with its
+   exact MIME type, and orders the chapters in `<spine>`. Strict readers refuse to load media that
+   exists in the ZIP but is missing from the manifest.
+
+JSZip stamps every entry with the current time by default, which breaks reproducible output. Set a
+fixed `date` on each entry, and keep insertion order explicit: `mimetype` first, then `META-INF/`,
+then `OEBPS/`.
 
 ---
 
@@ -25,17 +42,17 @@ my-story.epub (ZIP Archive)
     ├── nav.xhtml                     <-- EPUB 3 Table of Contents
     ├── css/
     │   └── storybook.css             <-- Drop-caps, dyslexia-friendly font rules, page-break rules, night-mode support
-    ├── fonts/                        <-- Copied from stories/epub_templates/fonts/ (shipped in the repo)
+    ├── fonts/                        <-- Generated into convex/epub/assets.ts by `npm run epub:assets`
     │   ├── Lexend-Regular.woff2      <-- Embedded child-friendly / dyslexia-friendly body typography
     │   └── Fraunces-Bold.woff2       <-- Storybook display headers
     ├── images/
     │   ├── cover.jpg                 <-- Marked with properties="cover-image" in content.opf
-    │   ├── char_1_ref.jpg            <-- For the Character Trading Cards appendix
+    │   ├── char_1_ref.jpg            <-- For the Character Trading Cards appendix (post-v0)
     │   └── ch_1.jpg                  <-- Static illustration & video poster frame
     ├── video/
-    │   └── ch_1.mp4                  <-- FFmpeg-optimised H.264 MP4 from Grok/Veo (Deluxe edition only)
+    │   └── ch_1.mp4                  <-- Transcoded H.264 MP4 (deluxe edition only, post-v0)
     └── text/
-        ├── titlepage.xhtml           <-- Includes the child's SVG signature!
+        ├── titlepage.xhtml           <-- Typed author name in v0; SVG signature post-v0
         ├── chapter_1.xhtml
         ├── chapter_2.xhtml
         └── appendix.xhtml            <-- Character cards, original prompts & choices log
@@ -45,226 +62,235 @@ my-story.epub (ZIP Archive)
 
 ## 3. Progressive Enhancement: `<video>` Across E-Readers
 
-The **EPUB 3** specification is built on HTML5, CSS3, and SVG, so it natively supports embedded `<video>` and `<audio>`. However, rendering engines differ:
+**v0 ships one EPUB: text + static illustrations.** The video variant below is the post-v0 deluxe
+edition; it is described because the templates already support it and nothing else has to change to
+turn it on.
+
+The **EPUB 3** specification is built on HTML5, CSS3, and SVG, so it natively supports embedded
+`<video>` and `<audio>`. However, rendering engines differ:
 
 | Target Reader / Device | HTML5 `<video>` Support in EPUB 3 | What Happens & How We Handle It |
 | :--- | :--- | :--- |
 | **Apple Books** (iPad, iPhone, Mac) | **Full Native Support** (WebKit) | Plays inline MP4 video on the storybook page. Supports `loop`, `muted`, `playsinline`, and tap-to-play controls. |
 | **Modern Tablet/Desktop Readers** (Thorium, Readium, Cantook, Google Play Books) | **Full / Tap-to-Play Support** | Renders the `<video>` element inline and plays when tapped. |
-| **E-Ink Readers** (Kindle Paperwhite, Kobo Clara, PocketBook) | **No Video Playback** | The engine ignores `<video>` and renders the `poster` attribute or the inner fallback `<img>` automatically. |
+| **E-Ink Readers** (Kobo Clara, PocketBook) | **No Video Playback** | The engine ignores `<video>` and renders the `poster` attribute or the inner fallback `<img>`. |
+| **Kindle** | **Not an EPUB reader** | Send-to-Kindle converts the upload to KF8/azw3 and the conversion's treatment of `<video>` is undefined. Treat Kindle as best-effort, test with a real device, and always ship the `<img>` fallback inside the `<video>` element. |
 
 ### Two Download Flavours
-When the child hits **Download Book**, offer two buttons:
-* 📱 **Deluxe Living EPUB (with Video):** Best for iPad / Apple Books / tablets (~6–15 MB). `Epub3Compiler(story, include_video=True)`.
-* 📖 **Kindle / E-Ink Edition (Lightweight):** Strips the `.mp4` files and keeps only the static illustrations so it sails through Amazon's *Send-to-Kindle* email size limits (~2 MB). `Epub3Compiler(story, include_video=False)`.
 
-*E-Ink bonus:* The appendix can include a small auto-generated **QR code** linking to a private web view of the book's animated scenes, so a parent reading on a black-and-white Kindle can still show the child the Living Pictures on a phone.
+* 📖 **Standard EPUB (v0):** text, cover, and static illustrations. `includeVideo = false`.
+* 📱 **Deluxe Living EPUB (post-v0):** same book plus the MP4s, for iPad / Apple Books / tablets
+  (~6–15 MB). `includeVideo = true`.
+
+The e-ink "QR code to the animated scenes" idea stays on the shelf until there is a hosted reader to
+point it at; `decisions.md` rules out public links in v0.
 
 ---
 
-## 4. The `Epub3Compiler` Service (`stories/epub_compiler.py`)
+## 4. The `epub.ts` Action (`convex/epub/epub.ts`)
 
-```python
-# stories/epub_compiler.py
-import io
-import re
-import zipfile
-from pathlib import Path
+```ts
+// convex/epub/epub.ts
+import JSZip from "jszip";
+import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
+import { action } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { FONT_FILES, STORYBOOK_CSS } from "./assets";
+import {
+  renderAppendix,
+  renderChapter,
+  renderContainer,
+  renderContentOpf,
+  renderNav,
+  renderTitlepage,
+} from "./templates";
 
-from django.db.models.fields.files import FieldFile
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-from markupsafe import Markup, escape
+// One fixed timestamp for every ZIP entry so two builds of the same story are byte-identical.
+const FIXED_DATE = new Date("2020-01-01T00:00:00Z");
 
-from .models import Chapter, Story
+const escapeHtml = (text: string): string =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 
-# Resolved relative to this module, never the process CWD, so it works identically
-# under `manage.py runserver`, Celery workers, pytest, and Docker.
-TEMPLATES_DIR = Path(__file__).resolve().parent / "epub_templates"
-FONTS_DIR = TEMPLATES_DIR / "fonts"
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-EMBEDDED_FONTS = [
-    ("Lexend-Regular.woff2", "font_body"),
-    ("Fraunces-Bold.woff2", "font_display"),
-]
+type VocabNote = { word: string; kidDefinition: string };
 
+/**
+ * Escape raw LLM prose, then wrap the FIRST occurrence (per chapter) of each vocab word in an
+ * EPUB 3 noteref link. `wrapped` carries state across paragraphs. This is the only place untrusted
+ * text stops being text, and it is escaped before anything is inserted.
+ */
+export function renderParagraphHtml(
+  paragraph: string,
+  vocabNotes: VocabNote[],
+  chapterIndex: number,
+  wrapped: Set<string>,
+): string {
+  let html = escapeHtml(paragraph);
+  vocabNotes.forEach((note, i) => {
+    const key = note.word.toLowerCase();
+    if (wrapped.has(key)) return;
+    const needle = escapeRegExp(escapeHtml(note.word));
+    const pattern = new RegExp(`(?<![\\w-])(${needle})(?![\\w-])`, "i");
+    if (!pattern.test(html)) return;
+    html = html.replace(
+      pattern,
+      `<a epub:type="noteref" class="vocab-word" href="#vocab-${chapterIndex}-${i + 1}">$1</a>`,
+    );
+    wrapped.add(key);
+  });
+  return html;
+}
 
-def _read_field_file(field: FieldFile) -> bytes:
-    """Read a Django FileField/ImageField safely regardless of storage backend (local, S3, R2)."""
-    with field.open("rb") as f:
-        return f.read()
+export const buildEpub = action({
+  args: { storyId: v.id("stories"), includeVideo: v.boolean() },
+  handler: async (ctx, { storyId, includeVideo }) => {
+    const { story, chapters, characters } = await ctx.runQuery(
+      internal.stories.getForExport,
+      { storyId },
+    );
 
+    const zip = new JSZip();
+    const add = (path: string, data: string | Uint8Array, store = false) => {
+      zip.file(path, data, {
+        date: FIXED_DATE,
+        compression: store ? "STORE" : "DEFLATE",
+      });
+    };
+    const readFile = async (id: Id<"_storage">) => {
+      const blob = await ctx.storage.get(id);
+      if (!blob) throw new Error(`missing storage file ${id}`);
+      return new Uint8Array(await blob.arrayBuffer());
+    };
 
-def render_paragraph_html(
-    paragraph: str,
-    vocab_notes: list[dict],
-    chapter_index: int,
-    already_wrapped: set[int],
-) -> Markup:
-    """Escape raw LLM prose, then wrap the FIRST occurrence (per chapter) of each vocab
-    word in an EPUB 3 noteref link. `already_wrapped` carries state across paragraphs.
-    This is the only place untrusted text is promoted to Markup, and it is escaped first."""
-    html = str(escape(paragraph))
-    for n, note in enumerate(vocab_notes, start=1):
-        if n in already_wrapped:
-            continue
-        word = re.escape(str(escape(note["word"])))
-        pattern = re.compile(rf"\b({word})\b", re.IGNORECASE)
-        html, count = pattern.subn(
-            rf'<a epub:type="noteref" class="vocab-word" href="#vocab-{chapter_index}-{n}">\1</a>',
-            html,
-            count=1,
-        )
-        if count:
-            already_wrapped.add(n)
-    return Markup(html)
+    // RULE 1: mimetype first, uncompressed, no trailing newline.
+    add("mimetype", "application/epub+zip", true);
+    // RULE 2: container points at OEBPS/content.opf.
+    add("META-INF/container.xml", renderContainer());
 
+    // CSS and the subset WOFF2 files are generated into ./assets.ts by `npm run epub:assets`
+    // (Convex actions cannot read the filesystem, so they ship inside the bundle).
+    add("OEBPS/css/storybook.css", STORYBOOK_CSS);
 
-class Epub3Compiler:
-    def __init__(self, story: Story, include_video: bool = True):
-        self.story = story
-        self.include_video = include_video  # True = Deluxe iPad edition, False = Lightweight Kindle edition
-        self.env = Environment(
-            loader=FileSystemLoader(TEMPLATES_DIR),
-            autoescape=select_autoescape(["xhtml", "xml", "opf"]),
-        )
+    const manifest: {
+      id: string;
+      href: string;
+      mediaType: string;
+      properties?: string;
+    }[] = [];
+    const spine: string[] = ["titlepage"];
 
-    def _chapter_paragraphs_html(self, ch: Chapter) -> list[Markup]:
-        # Each vocab word is wrapped once per chapter, scanning paragraphs in order.
-        wrapped: set[int] = set()
-        return [
-            render_paragraph_html(para, ch.vocab_notes, ch.index, wrapped)
-            for para in ch.paragraphs
-        ]
+    for (const font of ["Lexend-Regular.woff2", "Fraunces-Bold.woff2"]) {
+      add(`OEBPS/fonts/${font}`, FONT_FILES[font]);
+      manifest.push({
+        id: font.startsWith("Lexend") ? "font_body" : "font_display",
+        href: `fonts/${font}`,
+        mediaType: "font/woff2",
+      });
+    }
 
-    def build(self) -> bytes:
-        buffer = io.BytesIO()
-        chapters = list(self.story.chapters.all())
-        characters = list(self.story.characters.all())
+    if (story.coverFileId) {
+      add("OEBPS/images/cover.jpg", await readFile(story.coverFileId));
+      manifest.push({
+        id: "cover-image",
+        href: "images/cover.jpg",
+        mediaType: "image/jpeg",
+        properties: "cover-image",
+      });
+    }
 
-        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as epub:
-            # RULE 1: 'mimetype' MUST be first and MUST use ZIP_STORED (uncompressed)
-            epub.writestr(
-                "mimetype",
-                b"application/epub+zip",
-                compress_type=zipfile.ZIP_STORED,
-            )
+    // Character portraits for the appendix trading cards (post-v0; skipped when absent).
+    for (const char of characters) {
+      if (!char.referenceFileId) continue;
+      const href = `images/char_${char.id}_ref.jpg`;
+      add(`OEBPS/${href}`, await readFile(char.referenceFileId));
+      manifest.push({ id: `img_char_${char.id}`, href, mediaType: "image/jpeg" });
+    }
 
-            # RULE 2: META-INF/container.xml
-            container_xml = self.env.get_template("container.xml").render()
-            epub.writestr("META-INF/container.xml", container_xml)
+    add("OEBPS/text/titlepage.xhtml", renderTitlepage(story, escapeHtml));
 
-            # Stylesheet & Embedded Dyslexia-Friendly / Storybook Fonts
-            css_content = self.env.get_template("storybook.css").render(vibe=self.story.vibe)
-            epub.writestr("OEBPS/css/storybook.css", css_content)
+    for (const ch of chapters) {
+      const hasVideo = Boolean(includeVideo && ch.isKeyVideoChapter && ch.videoFileId);
 
-            manifest_items = []
-            spine_itemrefs = ["titlepage"]
+      if (ch.illustrationFileId) {
+        const href = `images/ch_${ch.index}.jpg`;
+        add(`OEBPS/${href}`, await readFile(ch.illustrationFileId));
+        manifest.push({ id: `img_ch_${ch.index}`, href, mediaType: "image/jpeg" });
+      }
+      if (hasVideo && ch.videoFileId) {
+        const href = `video/ch_${ch.index}.mp4`;
+        add(`OEBPS/${href}`, await readFile(ch.videoFileId));
+        manifest.push({ id: `vid_ch_${ch.index}`, href, mediaType: "video/mp4" });
+      }
 
-            # Embedded fonts (shipped with the package under epub_templates/fonts/)
-            for font_name, font_id in EMBEDDED_FONTS:
-                epub.writestr(f"OEBPS/fonts/{font_name}", (FONTS_DIR / font_name).read_bytes())
-                manifest_items.append({
-                    "id": font_id,
-                    "href": f"fonts/{font_name}",
-                    "media_type": "font/woff2",
-                })
+      const wrapped = new Set<string>();
+      add(
+        `OEBPS/text/chapter_${ch.index}.xhtml`,
+        renderChapter({
+          chapter: ch,
+          paragraphsHtml: ch.paragraphs.map((p) =>
+            renderParagraphHtml(p, ch.vocabNotes, ch.index, wrapped),
+          ),
+          hasImage: Boolean(ch.illustrationFileId),
+          hasVideo,
+          escapeHtml,
+        }),
+      );
 
-            # Cover image (Story.cover_image, generated by the generate_cover_image task)
-            if self.story.cover_image:
-                epub.writestr("OEBPS/images/cover.jpg", _read_field_file(self.story.cover_image))
-                manifest_items.append({
-                    "id": "cover-image",
-                    "href": "images/cover.jpg",
-                    "media_type": "image/jpeg",
-                    "properties": "cover-image",
-                })
+      manifest.push({
+        id: `chapter_${ch.index}`,
+        href: `text/chapter_${ch.index}.xhtml`,
+        mediaType: "application/xhtml+xml",
+      });
+      spine.push(`chapter_${ch.index}`);
+    }
 
-            # Character reference portraits for the appendix trading cards
-            for char in characters:
-                if not char.reference_image:
-                    continue
-                ref_name = f"images/char_{char.id}_ref.jpg"
-                epub.writestr(f"OEBPS/{ref_name}", _read_field_file(char.reference_image))
-                manifest_items.append({
-                    "id": f"img_char_{char.id}",
-                    "href": ref_name,
-                    "media_type": "image/jpeg",
-                })
+    add(
+      "OEBPS/text/appendix.xhtml",
+      renderAppendix({ story, chapters, characters, escapeHtml }),
+    );
+    manifest.push({
+      id: "appendix",
+      href: "text/appendix.xhtml",
+      mediaType: "application/xhtml+xml",
+    });
+    spine.push("appendix");
 
-            # Render Title & Dedication Page (including the child's SVG signature!)
-            titlepage_xhtml = self.env.get_template("titlepage.xhtml").render(story=self.story)
-            epub.writestr("OEBPS/text/titlepage.xhtml", titlepage_xhtml)
+    add("OEBPS/nav.xhtml", renderNav({ chapters, escapeHtml }));
+    // RULE 3: written last, listing everything above.
+    add(
+      "OEBPS/content.opf",
+      renderContentOpf({ story, manifest, spine, escapeHtml }),
+    );
 
-            # Render Each Chapter & Embed Media
-            for ch in chapters:
-                has_img = bool(ch.illustration_file)
-                has_vid = bool(self.include_video and ch.is_key_video_chapter and ch.video_file)
-
-                if has_img:
-                    img_name = f"images/ch_{ch.index}.jpg"
-                    epub.writestr(f"OEBPS/{img_name}", _read_field_file(ch.illustration_file))
-                    manifest_items.append({
-                        "id": f"img_ch_{ch.index}",
-                        "href": img_name,
-                        "media_type": "image/jpeg",
-                    })
-
-                if has_vid:
-                    vid_name = f"video/ch_{ch.index}.mp4"
-                    epub.writestr(f"OEBPS/{vid_name}", _read_field_file(ch.video_file))
-                    manifest_items.append({
-                        "id": f"vid_ch_{ch.index}",
-                        "href": vid_name,
-                        "media_type": "video/mp4",
-                    })
-
-                chapter_xhtml = self.env.get_template("chapter.xhtml").render(
-                    chapter=ch,
-                    paragraphs_html=self._chapter_paragraphs_html(ch),
-                    has_img=has_img,
-                    has_vid=has_vid,
-                )
-                ch_filename = f"text/chapter_{ch.index}.xhtml"
-                epub.writestr(f"OEBPS/{ch_filename}", chapter_xhtml)
-
-                ch_id = f"chapter_{ch.index}"
-                manifest_items.append({
-                    "id": ch_id,
-                    "href": ch_filename,
-                    "media_type": "application/xhtml+xml",
-                })
-                spine_itemrefs.append(ch_id)
-
-            # Render "Behind the Scenes / Director's Notes" Appendix
-            appendix_xhtml = self.env.get_template("appendix.xhtml").render(
-                story=self.story,
-                chapters=chapters,
-                characters=characters,
-            )
-            epub.writestr("OEBPS/text/appendix.xhtml", appendix_xhtml)
-            manifest_items.append({
-                "id": "appendix",
-                "href": "text/appendix.xhtml",
-                "media_type": "application/xhtml+xml",
-            })
-            spine_itemrefs.append("appendix")
-
-            # Render EPUB 3 Navigation (nav.xhtml) & Master Package (content.opf)
-            nav_xhtml = self.env.get_template("nav.xhtml").render(story=self.story, chapters=chapters)
-            epub.writestr("OEBPS/nav.xhtml", nav_xhtml)
-
-            content_opf = self.env.get_template("content.opf").render(
-                story=self.story,
-                manifest_items=manifest_items,
-                spine_itemrefs=spine_itemrefs,
-            )
-            epub.writestr("OEBPS/content.opf", content_opf)
-
-        return buffer.getvalue()
+    const bytes = await zip.generateAsync({
+      type: "uint8array",
+      compression: "DEFLATE",
+      platform: "UNIX",
+    });
+    const fileId = await ctx.storage.store(new Blob([bytes], { type: "application/epub+zip" }));
+    await ctx.runMutation(internal.stories.setEpub, { storyId, fileId });
+    return fileId;
+  },
+});
 ```
 
-### Pre-Staging Assets During the Story Loop
-Don't wait until the child clicks "Publish" after Chapter 5 to process media. As soon as a chapter is marked `LOCKED`, the background worker has already optimised `ch_N.jpg` and transcoded `ch_N.mp4`. When the child signs their name on the title page, the compiler just zips the pre-built assets and streams the `.epub` almost instantly.
+### Pre-staging assets during the story loop
+
+Don't wait until the child clicks "Publish" after Chapter 5 to process media. As soon as a chapter is
+`LOCKED`, the media action has already stored `ch_N.jpg`. When the child signs their name, the
+compiler only zips pre-built `_storage` files, so the download starts in about a second, not a
+generate-then-zip minute.
+
+**Testability seam:** `buildEpub` is the I/O shell (`ctx.storage.get` plus the mutation that records
+the file). The archive assembly — `renderParagraphHtml`, the templates, and `zip.generateAsync` — is
+exported separately as `buildEpubArchive(input)` taking already-fetched bytes. That pure function is
+what §10 tests.
 
 ---
 
@@ -273,7 +299,7 @@ Don't wait until the child clicks "Publish" after Chapter 5 to process media. As
 E-readers are picky. If you hardcode `background-color` on `body`, you break the reader's built-in Night/Sepia modes. Without `break-inside: avoid` on `<figure>`, an illustration and its caption can split across pages.
 
 ```css
-/* stories/epub_templates/storybook.css */
+/* convex/epub/assets.ts — source file: assets/storybook.css, inlined by `npm run epub:assets` */
 @charset "UTF-8";
 
 /* 1. Embedded Fonts (Dyslexia-Friendly Body + Storybook Display Headers) */
@@ -490,139 +516,210 @@ aside.vocab-popup {
 ## 6. The Chapter Template (`chapter.xhtml`)
 
 Implements:
-1. **Progressive Enhancement `<video>`:** Plays inline on Apple Books/tablets; falls back to `<img>` on Kindle Paperwhite and Kobo e-ink readers.
-2. **Native EPUB 3 Pop-up Glossaries:** `epub:type="noteref"` links + `<aside epub:type="footnote">` make Apple Books, Kindle, and Kobo open a native floating pop-up card when a child taps a Stealth Vocabulary word.
 
-```html
-<!-- stories/epub_templates/chapter.xhtml -->
-<?xml version="1.0" encoding="utf-8"?>
+1. **Progressive Enhancement `<video>`:** plays inline on Apple Books/tablets; falls back to `<img>`
+   on e-ink readers.
+2. **Native EPUB 3 Pop-up Glossaries:** `epub:type="noteref"` links plus `<aside
+   epub:type="footnote">` make Apple Books and Kobo open a floating definition card when a child taps
+   a Word Treasure.
+
+```ts
+// convex/epub/templates.ts (chapter)
+export function renderChapter(input: {
+  chapter: Chapter;
+  paragraphsHtml: string[]; // already escaped and vocab-wrapped by the compiler
+  hasImage: boolean;
+  hasVideo: boolean;
+  escapeHtml: (text: string) => string;
+}): string {
+  const { chapter: ch, escapeHtml: esc } = input;
+
+  const media = input.hasVideo
+    ? `<figure class="chapter-media">
+      <video width="800" height="600" poster="../images/ch_${ch.index}.jpg" controls="controls" loop="loop" muted="muted" playsinline="playsinline">
+        <source src="../video/ch_${ch.index}.mp4" type="video/mp4" />
+        <img src="../images/ch_${ch.index}.jpg" alt="${esc(ch.title ?? "")} illustration" />
+      </video>
+      <figcaption class="caption"><span class="magic-badge">✨ Living Picture</span> ${esc(ch.title ?? "")}</figcaption>
+    </figure>`
+    : input.hasImage
+      ? `<figure class="chapter-media">
+      <img src="../images/ch_${ch.index}.jpg" alt="${esc(ch.title ?? "")} illustration" />
+      <figcaption class="caption">${esc(ch.title ?? "")}</figcaption>
+    </figure>`
+      : "";
+
+  const prose = input.paragraphsHtml
+    .map(
+      (html, i) =>
+        `<p class="${i === 0 ? "first-para" : ""}">${html}</p>`,
+    )
+    .join("\n");
+
+  const notes = ch.vocabNotes
+    .map(
+      (note, i) => `<aside id="vocab-${ch.index}-${i + 1}" epub:type="footnote" class="vocab-popup">
+        <p style="text-indent: 0;"><strong>🌟 Word Treasure — ${esc(note.word)}:</strong> ${esc(note.kidDefinition)}</p>
+      </aside>`,
+    )
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Chapter {{ chapter.index }}: {{ chapter.title }}</title>
+  <title>Chapter ${ch.index}: ${esc(ch.title ?? "")}</title>
   <link rel="stylesheet" type="text/css" href="../css/storybook.css" />
 </head>
 <body epub:type="bodymatter">
-  <section epub:type="chapter" id="ch-{{ chapter.index }}">
-
+  <section epub:type="chapter" id="ch-${ch.index}">
     <header class="chapter-header">
-      <span class="chapter-number">Chapter {{ chapter.index }}</span>
-      <h1 class="chapter-title">{{ chapter.title }}</h1>
+      <span class="chapter-number">Chapter ${ch.index}</span>
+      <h1 class="chapter-title">${esc(ch.title ?? "")}</h1>
     </header>
-
-    {% if has_vid %}
-    <!-- KEY VIDEO CHAPTER: Plays MP4 in Apple Books/Readium; falls back to static JPG on E-Ink -->
-    <figure class="chapter-media">
-      <video
-        width="800"
-        height="600"
-        poster="../images/ch_{{ chapter.index }}.jpg"
-        controls="controls"
-        loop="loop"
-        muted="muted"
-        playsinline="playsinline">
-        <source src="../video/ch_{{ chapter.index }}.mp4" type="video/mp4" />
-        <img src="../images/ch_{{ chapter.index }}.jpg" alt="{{ chapter.title }} illustration" />
-      </video>
-      <figcaption class="caption">
-        <span class="magic-badge">✨ Living Picture</span> {{ chapter.title }}
-      </figcaption>
-    </figure>
-    {% elif has_img %}
-    <!-- STANDARD STATIC ILLUSTRATION CHAPTER -->
-    <figure class="chapter-media">
-      <img src="../images/ch_{{ chapter.index }}.jpg" alt="{{ chapter.title }} illustration" />
-      <figcaption class="caption">{{ chapter.title }}</figcaption>
-    </figure>
-    {% endif %}
-
-    <!-- STORY PARAGRAPHS (pre-escaped Markup from render_paragraph_html; vocab words already wrapped) -->
+    ${media}
     <div class="chapter-prose">
-      {% for paragraph in paragraphs_html %}
-      <p class="{% if loop.first %}first-para{% endif %}">{{ paragraph }}</p>
-      {% endfor %}
+${prose}
     </div>
-
-    <!-- OPTIONAL STEALTH VOCABULARY NATIVE POP-UP FOOTNOTES -->
-    {% if chapter.vocab_notes %}
-    <div class="vocab-footnotes">
-      {% for vocab in chapter.vocab_notes %}
-      <aside id="vocab-{{ chapter.index }}-{{ loop.index }}" epub:type="footnote" class="vocab-popup">
-        <p style="text-indent: 0;">
-          <strong>🌟 Word Treasure — {{ vocab.word }}:</strong> {{ vocab.kid_definition }}
-        </p>
-      </aside>
-      {% endfor %}
-    </div>
-    {% endif %}
-
+    ${ch.vocabNotes.length > 0 ? `<div class="vocab-footnotes">\n${notes}\n    </div>` : ""}
   </section>
 </body>
-</html>
+</html>`;
+}
 ```
 
-> **Vocabulary wrapping:** `paragraphs_html` is produced by `render_paragraph_html` in the compiler, which HTML-escapes the raw LLM prose *first* and only then wraps the first occurrence of each vocab word in a `noteref` link, returning a `Markup` object. Because it is already `Markup`, Jinja2 does not double-escape it. Raw `chapter.paragraphs` are never passed through `| safe`.
+> **Vocabulary wrapping:** `paragraphsHtml` is produced by `renderParagraphHtml` in `epub.ts`, which
+> escapes the raw prose *first* and only then wraps the first occurrence of each vocab word in a
+> `noteref` link. Templates treat those strings as trusted HTML; raw `chapter.paragraphs` never
+> reach a template.
 
 ---
 
 ## 7. The Title & Dedication Page (`titlepage.xhtml`)
 
-Embeds the child's finger-drawn or Apple Pencil SVG signature and their custom publishing house imprint.
+Embeds the child's typed author name in v0, and the finger-drawn SVG signature when that lands
+post-v0.
 
-```html
-<!-- stories/epub_templates/titlepage.xhtml -->
-<?xml version="1.0" encoding="utf-8"?>
+```ts
+// convex/epub/templates.ts (title page)
+export function renderTitlepage(
+  story: Story,
+  esc: (text: string) => string,
+): string {
+  const author = esc(story.authorName ?? "A Young Author");
+  const created = new Date(story.createdAt);
+  const printed = created.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+
+  return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>{{ story.title }}</title>
+  <title>${esc(story.title)}</title>
   <link rel="stylesheet" type="text/css" href="../css/storybook.css" />
 </head>
 <body epub:type="frontmatter">
   <section epub:type="titlepage" class="title-page">
-
     <p class="chapter-number" style="text-indent: 0;">An Original Interactive Storybook</p>
-    <h1 class="book-main-title">{{ story.title }}</h1>
-
+    <h1 class="book-main-title">${esc(story.title)}</h1>
     <div class="author-credit">
       <p style="text-indent: 0;">Directed &amp; Co-Authored by</p>
-      <h2 style="margin: 0.2em 0;">{{ story.author_name }}</h2>
+      <h2 style="margin: 0.2em 0;">${author}</h2>
     </div>
-
-    {% if story.author_signature_svg %}
-    <div class="signature-box" aria-label="Author's Handwritten Signature">
-      <!-- Validated/sanitised inline SVG paths from the child's signature pad -->
-      {{ story.author_signature_svg | safe }}
+    ${
+      story.authorSignatureSvg
+        ? `<div class="signature-box" aria-label="Author's Handwritten Signature">
+      ${story.authorSignatureSvg}
       <div style="font-size: 0.75em; opacity: 0.6; margin-top: 0.3em;">Official Author Signature</div>
-    </div>
-    {% endif %}
-
+    </div>`
+        : ""
+    }
     <div class="publisher-imprint">
       <p style="text-indent: 0;">
-        First Edition • Published by <strong>{{ story.author_name }} Press</strong><br />
-        Created on {{ story.created_at.strftime('%d %B %Y') }}<br />
+        First Edition • Published by <strong>${author} Press</strong><br />
+        Created on ${printed}<br />
         <em>No dragons, badgers, or royal sponge cakes were harmed in the making of this book.</em>
       </p>
     </div>
-
   </section>
 </body>
-</html>
+</html>`;
+}
 ```
 
-> **SVG safety note:** The signature SVG is generated by your own frontend canvas (not by an LLM or arbitrary upload), but still sanitise it server-side (allow only `<svg>`, `<path>`, `<g>` with `d`, `stroke`, `fill`, `viewBox` attributes) before storing in `author_signature_svg`.
+> **SVG safety:** the signature comes from our own frontend canvas, never from the model or an
+> arbitrary upload, but it is still sanitised in the mutation that stores it (allow only `<svg>`,
+> `<path>`, `<g>` with `d`, `stroke`, `fill`, `stroke-width`, `viewBox`) — which is why the template
+> can insert it without re-escaping. Everything else on this page goes through `esc`.
 
 ---
 
 ## 8. The "Director's Cut" Appendix (`appendix.xhtml`)
 
-Parents adore this page. Years later, they don't just see the story—they see the exact characters their child invented, what they packed in the backpack, and the plot choices they made at each chapter.
+Years later, parents don't just see the story: they see the characters their child invented, what
+they packed, and the plot card they chose at each chapter.
 
-```html
-<!-- stories/epub_templates/appendix.xhtml -->
-<?xml version="1.0" encoding="utf-8"?>
+```ts
+// convex/epub/templates.ts (appendix)
+export function renderAppendix(input: {
+  story: Story;
+  chapters: Chapter[];
+  characters: Character[];
+  escapeHtml: (text: string) => string;
+}): string {
+  const { story, chapters, characters, escapeHtml: esc } = input;
+  const author = esc(story.authorName ?? "A Young Author");
+
+  const cards = characters
+    .map(
+      (char) => `<div class="trading-card">
+      <div class="trading-card-header">
+        ${
+          char.referenceFileId
+            ? `<img class="trading-card-avatar" src="../images/char_${char.id}_ref.jpg" alt="${esc(char.name)}" />`
+            : ""
+        }
+        <div>
+          <strong style="font-size: 1.2em;">${esc(char.name)}</strong>
+          <span class="magic-badge">${esc(char.role)}</span>
+        </div>
+      </div>
+      <p style="text-indent: 0; margin-bottom: 0.4em;"><strong>Special Quirk:</strong> ${esc(char.quirk)}</p>
+      <p style="text-indent: 0; margin: 0; font-size: 0.9em; opacity: 0.85;"><strong>Appearance:</strong> ${esc(char.visualDescription)}</p>
+    </div>`,
+    )
+    .join("\n");
+
+  const usedItem = (ch: Chapter) =>
+    story.items.find((item) => item.id === ch.modifiers?.useItemId)?.name;
+
+  const log = chapters
+    .map((ch) => {
+      const beat = ch.chosenBeat;
+      const item = usedItem(ch);
+      return `<div class="directors-log-item">
+      <p style="text-indent: 0; margin-bottom: 0.2em;"><strong>Chapter ${ch.index}: ${esc(ch.title ?? "")}</strong></p>
+      ${
+        beat
+          ? `<p style="text-indent: 0; font-size: 0.92em; margin-bottom: 0.2em;"><em>Director's Choice:</em> ${esc(beat.iconEmoji)} ${esc(beat.title)} — "${esc(beat.kidFriendlyPitch)}"</p>`
+          : ""
+      }
+      ${
+        item
+          ? `<p style="text-indent: 0; font-size: 0.85em; margin: 0; color: #b45309;">🎒 Used from Backpack: <strong>${esc(item)}</strong></p>`
+          : ""
+      }
+    </div>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
 <head>
@@ -632,110 +729,99 @@ Parents adore this page. Years later, they don't just see the story—they see t
 </head>
 <body epub:type="backmatter">
   <section epub:type="appendix">
-
     <header class="chapter-header">
       <span class="chapter-number">Behind the Scenes</span>
-      <h1 class="chapter-title">🎬 {{ story.author_name }}'s Director Notes</h1>
+      <h1 class="chapter-title">🎬 ${author}'s Director Notes</h1>
     </header>
-
     <h2>🌟 Official Cast &amp; Character Cards</h2>
-    {% for char in characters %}
-    <div class="trading-card">
-      <div class="trading-card-header">
-        {% if char.reference_image %}
-        <img class="trading-card-avatar" src="../images/char_{{ char.id }}_ref.jpg" alt="{{ char.name }}" />
-        {% endif %}
-        <div>
-          <strong style="font-size: 1.2em;">{{ char.name }}</strong>
-          <span class="magic-badge">{{ char.role }}</span>
-        </div>
-      </div>
-      <p style="text-indent: 0; margin-bottom: 0.4em;">
-        <strong>Special Quirk:</strong> {{ char.quirk }}
-      </p>
-      <p style="text-indent: 0; margin: 0; font-size: 0.9em; opacity: 0.85;">
-        <strong>Appearance:</strong> {{ char.visual_description }}
-      </p>
-    </div>
-    {% endfor %}
-
-    <h2 style="margin-top: 2em;">🗺️ How {{ story.author_name }} Shaped the Story</h2>
-    {% for ch in chapters %}
-    <div class="directors-log-item">
-      <p style="text-indent: 0; margin-bottom: 0.2em;">
-        <strong>Chapter {{ ch.index }}: {{ ch.title }}</strong>
-      </p>
-      <p style="text-indent: 0; font-size: 0.92em; margin-bottom: 0.2em;">
-        <em>Director's Choice:</em> {{ ch.chosen_beat.icon_emoji }} {{ ch.chosen_beat.title }} — "{{ ch.chosen_beat.kid_friendly_pitch }}"
-      </p>
-      {% if ch.director_modifiers.use_item_name %}
-      <p style="text-indent: 0; font-size: 0.85em; margin: 0; color: #b45309;">
-        🎒 Used from Backpack: <strong>{{ ch.director_modifiers.use_item_name }}</strong>
-      </p>
-      {% endif %}
-    </div>
-    {% endfor %}
-
+${cards}
+    <h2 style="margin-top: 2em;">🗺️ How ${author} Shaped the Story</h2>
+${log}
   </section>
 </body>
-</html>
+</html>`;
+}
 ```
+
+Note `usedItem` resolves `useItemId` against `story.items` at export time, so the appendix always
+shows the catalog name and never a raw id.
 
 ---
 
 ## 9. Package Document (`content.opf`), Navigation (`nav.xhtml`), & `container.xml`
 
 ### `content.opf`
-Note `properties="svg"` on the title page (required when a document contains inline SVG) and the clean separation of `manifest` and `spine`:
 
-```xml
-<!-- stories/epub_templates/content.opf -->
-<?xml version="1.0" encoding="utf-8"?>
+Note `properties="svg"` on the title page (required when a document contains inline SVG) and the
+clean separation of `manifest` and `spine`. `dcterms:modified` is derived from `story.createdAt`, not
+`Date.now()`, so the same story produces the same bytes.
+
+```ts
+// convex/epub/templates.ts (package + nav + container)
+export function renderContentOpf(input: {
+  story: Story;
+  manifest: { id: string; href: string; mediaType: string; properties?: string }[];
+  spine: string[];
+  escapeHtml: (text: string) => string;
+}): string {
+  const { story, manifest, spine, escapeHtml: esc } = input;
+  const author = esc(story.authorName ?? "A Young Author");
+  const iso = new Date(story.createdAt).toISOString();
+  const modified = `${iso.slice(0, 19)}Z`;
+
+  const items = [
+    '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />',
+    '<item id="css" href="css/storybook.css" media-type="text/css" />',
+    `<item id="titlepage" href="text/titlepage.xhtml" media-type="application/xhtml+xml"${
+      story.authorSignatureSvg ? ' properties="svg"' : ""
+    } />`,
+    ...manifest.map(
+      (item) =>
+        `<item id="${item.id}" href="${item.href}" media-type="${item.mediaType}"${
+          item.properties ? ` properties="${item.properties}"` : ""
+        } />`,
+    ),
+  ].join("\n    ");
+
+  const spineItems = spine.map((idref) => `<itemref idref="${idref}" />`).join("\n    ");
+
+  return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="en">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="book-id">urn:uuid:{{ story.id }}</dc:identifier>
-    <dc:title>{{ story.title }}</dc:title>
-    <dc:creator>{{ story.author_name }}</dc:creator>
+    <dc:identifier id="book-id">urn:uuid:${story._id}</dc:identifier>
+    <dc:title>${esc(story.title)}</dc:title>
+    <dc:creator>${author}</dc:creator>
     <dc:language>en</dc:language>
-    <dc:publisher>{{ story.author_name }} Press</dc:publisher>
-    <dc:date>{{ story.created_at.strftime('%Y-%m-%d') }}</dc:date>
-    <meta property="dcterms:modified">{{ story.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}</meta>
+    <dc:publisher>${author} Press</dc:publisher>
+    <dc:date>${iso.slice(0, 10)}</dc:date>
+    <meta property="dcterms:modified">${modified}</meta>
   </metadata>
-
   <manifest>
-    <!-- Navigation & Stylesheet -->
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />
-    <item id="css" href="css/storybook.css" media-type="text/css" />
-
-    <!-- Frontmatter (marked with 'svg' property if signature exists) -->
-    <item
-      id="titlepage"
-      href="text/titlepage.xhtml"
-      media-type="application/xhtml+xml"
-      {% if story.author_signature_svg %}properties="svg"{% endif %} />
-
-    <!-- Dynamic Fonts, Chapters, Images, and MP4 Videos -->
-    {% for item in manifest_items %}
-    <item
-      id="{{ item.id }}"
-      href="{{ item.href }}"
-      media-type="{{ item.media_type }}"
-      {% if item.properties %}properties="{{ item.properties }}"{% endif %} />
-    {% endfor %}
+    ${items}
   </manifest>
-
   <spine>
-    {% for idref in spine_itemrefs %}
-    <itemref idref="{{ idref }}" />
-    {% endfor %}
+    ${spineItems}
   </spine>
-</package>
+</package>`;
+}
 ```
 
 ### `nav.xhtml` (EPUB 3 Table of Contents)
-```html
-<!-- stories/epub_templates/nav.xhtml -->
-<?xml version="1.0" encoding="utf-8"?>
+
+```ts
+export function renderNav(input: {
+  chapters: Chapter[];
+  escapeHtml: (text: string) => string;
+}): string {
+  const esc = input.escapeHtml;
+  const entries = input.chapters
+    .map(
+      (ch) =>
+        `<li><a href="text/chapter_${ch.index}.xhtml">Chapter ${ch.index}: ${esc(ch.title ?? "")}</a></li>`,
+    )
+    .join("\n      ");
+
+  return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
 <head>
@@ -748,75 +834,104 @@ Note `properties="svg"` on the title page (required when a document contains inl
     <h1>Contents</h1>
     <ol>
       <li><a href="text/titlepage.xhtml">Title Page</a></li>
-      {% for ch in chapters %}
-      <li><a href="text/chapter_{{ ch.index }}.xhtml">Chapter {{ ch.index }}: {{ ch.title }}</a></li>
-      {% endfor %}
+      ${entries}
       <li><a href="text/appendix.xhtml">Behind the Scenes: Director's Notes</a></li>
     </ol>
   </nav>
 </body>
-</html>
+</html>`;
+}
 ```
 
 ### `container.xml` (lives at `META-INF/container.xml`)
-```xml
-<!-- stories/epub_templates/container.xml -->
-<?xml version="1.0" encoding="UTF-8"?>
+
+```ts
+export const renderContainer = (): string => `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml" />
   </rootfiles>
-</container>
+</container>`;
 ```
 
 ---
 
-## 10. Automated Validation (`pytest`)
+## 10. Automated Validation
 
-Because EPUB 3 files have strict structural rules, a fast structural test should run on every PR:
+Two layers, both required before a publishing change merges:
 
-```python
-# stories/tests/test_epub_compiler.py
-import io
-import zipfile
-import xml.etree.ElementTree as ET
-import pytest
-from stories.epub_compiler import Epub3Compiler
+1. **`epubcheck` in CI** — the only thing that catches what we cannot see (Java is already required
+   for this step; cache it or the build gets slow). It is the gate `decisions.md` names.
+2. **Structural Vitest** on the archive itself, under the edge runtime like the rest of `convex/`.
 
+Keep the ZIP assembly in a pure exported function (`buildEpubArchive`) so the tests never touch
+storage:
 
-@pytest.mark.django_db
-def test_epub_structure_is_valid(completed_story):
-    epub_bytes = Epub3Compiler(completed_story, include_video=True).build()
-    epub = zipfile.ZipFile(io.BytesIO(epub_bytes))
-    names = epub.namelist()
+```ts
+// convex/epub/epub.test.ts
+import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
+import { buildEpubArchive, renderParagraphHtml } from "./epub";
+import { fixture } from "./fixtures";
 
-    # 1. mimetype must be first, uncompressed, and exact
-    assert names[0] == "mimetype"
-    assert epub.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
-    assert epub.read("mimetype") == b"application/epub+zip"
+describe("epub archive", () => {
+  const readLocalHeader = (bytes: Uint8Array) => {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const method = view.getUint16(8, true); // 0 = stored
+    const nameLength = view.getUint16(26, true);
+    const name = new TextDecoder().decode(bytes.subarray(30, 30 + nameLength));
+    return { method, name };
+  };
 
-    # 2. Every XHTML / OPF / XML file must be well-formed XML
-    for name in names:
-        if name.endswith((".xhtml", ".opf", ".xml")):
-            ET.fromstring(epub.read(name))  # raises ParseError on unescaped & or <
+  it("puts mimetype first, stored, with exact bytes", async () => {
+    const bytes = await buildEpubArchive(fixture(), false);
+    const { method, name } = readLocalHeader(bytes);
+    expect(name).toBe("mimetype");
+    expect(method).toBe(0);
 
-    # 3. Every manifest href must exist in the archive
-    opf = ET.fromstring(epub.read("OEBPS/content.opf"))
-    ns = {"opf": "http://www.idpf.org/2007/opf"}
-    for item in opf.findall(".//opf:manifest/opf:item", ns):
-        assert f"OEBPS/{item.get('href')}" in names, f"Missing manifest asset: {item.get('href')}"
+    const zip = await JSZip.loadAsync(bytes);
+    expect(await zip.file("mimetype")?.async("string")).toBe("application/epub+zip");
+  });
 
-    # 4. Every spine idref must point to a manifest item
-    manifest_ids = {item.get("id") for item in opf.findall(".//opf:manifest/opf:item", ns)}
-    for itemref in opf.findall(".//opf:spine/opf:itemref", ns):
-        assert itemref.get("idref") in manifest_ids
+  it("is byte-identical across builds (fixed ZIP dates)", async () => {
+    const a = await buildEpubArchive(fixture(), false);
+    const b = await buildEpubArchive(fixture(), false);
+    expect(a.length).toBe(b.length);
+    expect(a.every((byte, i) => byte === b[i])).toBe(true);
+  });
 
+  it("declares every manifest href and resolves every spine idref", async () => {
+    const zip = await JSZip.loadAsync(await buildEpubArchive(fixture(), false));
+    const opf = (await zip.file("OEBPS/content.opf")?.async("string")) ?? "";
+    const hrefs = [...opf.matchAll(/<item [^>]*href="([^"]+)"/g)].map((m) => `OEBPS/${m[1]}`);
+    for (const href of hrefs) expect(zip.file(href), href).not.toBeNull();
 
-@pytest.mark.django_db
-def test_eink_edition_strips_video(completed_story):
-    epub_bytes = Epub3Compiler(completed_story, include_video=False).build()
-    names = zipfile.ZipFile(io.BytesIO(epub_bytes)).namelist()
-    assert not any(n.endswith(".mp4") for n in names)
+    const ids = new Set([...opf.matchAll(/<item [^>]*id="([^"]+)"/g)].map((m) => m[1]));
+    for (const [, idref] of opf.matchAll(/<itemref idref="([^"]+)"/g)) {
+      expect(ids.has(idref), idref).toBe(true);
+    }
+  });
+
+  it("strips video when the lightweight edition is requested", async () => {
+    const zip = await JSZip.loadAsync(await buildEpubArchive(fixture(), false));
+    expect(Object.keys(zip.files).some((name) => name.endsWith(".mp4"))).toBe(false);
+  });
+});
+
+describe("renderParagraphHtml", () => {
+  it("escapes prose and wraps each vocab word once per chapter", () => {
+    const wrapped = new Set<string>();
+    const notes = [{ word: "buoyant", kidDefinition: "floaty" }];
+    const first = renderParagraphHtml("<b>Buoyant</b> jam!", notes, 1, wrapped);
+    const second = renderParagraphHtml("So buoyant today.", notes, 1, wrapped);
+
+    expect(first).toContain("&lt;b&gt;");
+    expect(first).toContain('href="#vocab-1-1"');
+    expect(second).not.toContain("vocab-word");
+  });
+});
 ```
 
-For full spec conformance, also run the official **`epubcheck`** (Java CLI) against a sample build in CI: `epubcheck build/sample.epub`.
+The regex in `renderParagraphHtml` uses lookarounds (`(?<![\w-])…(?![\w-])`) rather than `\b`, so a
+vocab word next to punctuation still matches, and the wrap key is the lowercased word rather than the
+note index, so two notes with the same word cannot double-wrap the same paragraph.

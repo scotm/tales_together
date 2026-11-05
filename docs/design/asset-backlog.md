@@ -96,9 +96,9 @@ OFL fonts, same families across app and EPUB so screens and book read the same.
 - App art must stay trivial to regenerate: keep master `.figcraft` under `docs/design/`, export PNGs
   to `docs/design/exports/`, keep export names stable (`icon-lock.svg`,
   `badge-ages-7-9.svg`, …).
-- Cover pipeline (SVG templates + `resvg`) is Python today; port it to TypeScript or run it through a
-  job runner once the first story cover is needed — not a graphics asset, but required before it
-  ships.
+- Cover pipeline: the standalone `design/cover_image/generate_cover_image.py` script is scratch material,
+  not part of the app. The reusable parts are its SVG templates and `tailwind.cover-tokens.js`;
+  rebuild the rasterise step in TypeScript (`@resvg/resvg-js`) before the first real cover ships.
 
 ## 7. Not needed for MVP
 

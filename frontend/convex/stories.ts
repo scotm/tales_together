@@ -1,13 +1,30 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { BACKPACK_SIZE, CONVEYOR_ITEMS } from "./catalog";
+import {
+  CHAPTER_COUNT,
+  DEFAULT_ART_STYLE,
+  DEFAULT_VIBE,
+  READING_LEVEL,
+} from "./lib/config";
+import { getArcRoleInstructions } from "./llm/promptMatrices";
 
-const TOTAL_CHAPTERS = 5;
+const CATALOG_ITEM_IDS = new Set(CONVEYOR_ITEMS.map((item) => item.id));
 
-function arcRoleFor(index: number): string {
-  if (index === 1) return "HOOK_AND_INCITING_INCIDENT";
-  if (index === TOTAL_CHAPTERS) return "RESOLUTION_AND_CELEBRATION";
-  if (index === TOTAL_CHAPTERS - 1) return "CLIMAX_AND_ALL_HOPE_IS_LOST";
-  return `RISING_ACTION_COMPLICATION_${index}`;
+// The mutation is the trust boundary: the UI limiting picks to three is a
+// convenience, not a guarantee.
+function requireValidBackpack(items: { id: string; name: string }[]) {
+  if (items.length !== BACKPACK_SIZE) {
+    throw new Error(`a backpack holds exactly ${BACKPACK_SIZE} items`);
+  }
+  if (new Set(items.map((item) => item.id)).size !== items.length) {
+    throw new Error("backpack items must be distinct");
+  }
+  for (const item of items) {
+    if (!CATALOG_ITEM_IDS.has(item.id)) {
+      throw new Error(`unknown backpack item: ${item.id}`);
+    }
+  }
 }
 
 // v0 has no accounts: the story id in the URL is the only access control.
@@ -22,14 +39,18 @@ export const create = mutation({
     backpackItems: v.array(v.object({ id: v.string(), name: v.string() })),
   },
   handler: async (ctx, args) => {
+    requireValidBackpack(args.backpackItems);
+    if (!args.title.trim() || !args.protagonistName.trim()) {
+      throw new Error("a story needs a title and a hero name");
+    }
+
     const storyId = await ctx.db.insert("stories", {
       title: args.title,
       status: "SETUP",
-      readingLevel: "AGES_7_9",
-      totalChapters: TOTAL_CHAPTERS,
-      vibe: "SILLY_ADVENTURE",
-      artStyle:
-        "Warm watercolour and ink children's storybook illustration, whimsical, vibrant",
+      readingLevel: READING_LEVEL,
+      totalChapters: CHAPTER_COUNT,
+      vibe: DEFAULT_VIBE,
+      artStyle: DEFAULT_ART_STYLE,
       worldState: {
         setting: args.setting,
         centralProblem: args.centralProblem,
@@ -51,11 +72,11 @@ export const create = mutation({
       visualDescription: args.visualDescription,
     });
 
-    for (let index = 1; index <= TOTAL_CHAPTERS; index += 1) {
+    for (let index = 1; index <= CHAPTER_COUNT; index += 1) {
       await ctx.db.insert("chapters", {
         storyId,
         index,
-        arcRole: arcRoleFor(index),
+        arcRole: getArcRoleInstructions(index, CHAPTER_COUNT).role,
         status: "PITCHING",
         beatCards: [],
         paragraphs: [],

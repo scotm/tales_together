@@ -15,18 +15,18 @@
    * Adaptive Layout Philosophy Across Phone, Tablet, and Desktop
    * Screen-by-Screen UI Flows & Micro-Interactions
 
-2. **[02 — Backend State Machine & Multimodal Video Pipeline](./02-backend-and-video-pipeline.md)**
-   * Canonical `StoryState` JSON Architecture
+2. **[02 — Backend State Machine & Multimodal Media Pipeline](./02-backend-and-video-pipeline.md)**
+   * Canonical Story View Assembled from Convex Tables
    * Chapter Lifecycle Finite State Machine (FSM)
-   * Django Relational + JSON Models (`Story`, `Character`, `Chapter`)
-   * Pydantic Schemas for Structured LLM Outputs
+   * Convex Schema (`stories`, `characters`, `chapters`)
+   * Convex Validators for Structured LLM Outputs
    * Vision "Snap Your Real Toy" Character Scanner (`ScannedToyCharacterSheet`)
-   * Celery Async Media Pipeline (Static Illustration $\rightarrow$ Grok/Veo Image-to-Video $\rightarrow$ FFmpeg H.264 `faststart` Optimisation)
+   * Action-Driven Media Pipeline (Static Illustration $\rightarrow$ Grok/Veo Image-to-Video $\rightarrow$ External H.264 `faststart` Transcode)
    * Cost & Unit-Economics Guardrails ("Magic Living Picture Tickets")
 
 3. **[03 — Prompt Engineering & Pacing Matrices](./03-prompt-engineering-templates.md)**
    * Granular Reading Level Matrix (`AGES_4_6`, `AGES_7_9`, `AGES_10_12`)
-   * Deterministic Story Arc Pacing Engine (`get_arc_role_instructions`)
+   * Deterministic Story Arc Pacing Engine (`getArcRoleInstructions`)
    * Global "Anti-Slop" & Kid-Safe Guardrail System Preamble
    * **Prompt 1:** The Voice-Wildcard Normaliser (Child Audio $\rightarrow$ Story Card)
    * **Prompt 2:** The Chapter Beat Pitcher (Generating the 3 Tarot Cards)
@@ -37,7 +37,7 @@
 
 4. **[04 — Interactive React Frontend Components](./04-frontend-react-components.md)**
    * Tactile Design System & Micro-Interaction Hook (`useTactileFeedback.ts`)
-   * Client-Side State Machine (`useStoryDirectorStore.ts` with Zustand)
+   * Client-Side State Machine (`storyDirectorContext.tsx`, reducer + context)
    * The Toy Box Catalogue (`toyBoxCatalog.ts`)
    * The Toy Box & Character Creator (`ToyBoxCreator.tsx` — Padlock Slot Machine, 3D Trading Card, Peel-and-Stick Quirk Stickers, Real-Toy Camera Scanner, 3-Pocket Backpack Conveyor Belt)
    * Adaptive Cross-Screen Workbench (`StorybookWorkbench.tsx`)
@@ -46,25 +46,31 @@
    * The Living Storybook Page (`LivingStorybookPage.tsx` — 3-Stage Media Frame & Magic Wand Paragraph Remixing)
 
 5. **[05 — Deterministic EPUB 3 Compiler & XHTML/CSS Templates](./05-epub3-compiler-and-templates.md)**
-   * Why Custom `zipfile` + `Jinja2` Beats Legacy Libraries
+   * Why Custom `JSZip` + Template Functions Beat Legacy Libraries
    * EPUB 3 Archive Structure & Byte-Order Rules
    * Progressive Enhancement `<video>` Across Apple Books, Readium, and Kindle E-Ink
-   * Complete `Epub3Compiler` Python Service
+   * Complete `epub.ts` Convex Action
    * `storybook.css` (Drop Caps, Dyslexia-Friendly Typography, Unbreakable Media Frames, Night-Mode Support)
    * `chapter.xhtml` (HTML5 `<video>` with `<img>` Fallback & Native EPUB 3 Pop-Up Vocabulary Footnotes)
    * `titlepage.xhtml` (With Embedded Child SVG Handwritten Signature)
    * `appendix.xhtml` (Character Trading Cards & "Behind the Scenes: Director's Notes")
-   * `content.opf`, `nav.xhtml`, `container.xml`, and Automated `pytest` Validation
+   * `content.opf`, `nav.xhtml`, `container.xml`, and Automated Vitest + `epubcheck` Validation
 
 **[Decisions & gotchas](./decisions.md)** — append-only log of vendor choices, verified API sharp
 edges, and open platform questions. Read before adding infrastructure.
+
+**[Build plan](./06-build-plan.md)** — the slices to build, in dependency order, with an exit test
+for each. Start here when picking up work.
+
+**[Design notes](./design/)** — `asset-backlog.md` (graphics still needed, already v0-scoped) and
+`figcraft.md` (how to drive the FigCraft source build).
 
 ---
 
 ## 🏗️ High-Level System Flow
 
 ```text
-[ Child + Parent UI (React / Next.js / Expo) ]
+[ Child + Parent UI (Expo: web / iOS / Android) ]
        │
        ├─ 1. Toy Box Setup: Spins Padlock World Reels, builds Hero Trading Card,
        │     snaps photo of real toy, and packs 3 items into the Backpack.
@@ -73,30 +79,34 @@ edges, and open platform questions. Read before adding infrastructure.
        │     Picks 1 of 3 Tarot Beat Cards (or holds Giant Red Mic for a Wildcard)
        │     + toggles Spice Rack modifiers ("Use Golden Whisk", "Stormy", "Cliffhanger").
        ▼
-[ Django API & Deterministic State Machine ]
+[ Convex deployment: queries / mutations / actions ]
+       │  (schema.ts is the source of truth for stories, characters, chapters)
        │
-       ├─ 3. Streams Chapter Prose via SSE ────────────────► [ LivingStorybookPage.tsx ]
-       │     (Enforces Reading Level Matrix + Arc Role          (Child starts reading immediately;
-       │      + Verbatim Tail of Chapter N-1)                    can tap any paragraph to Remix)
-       │
-       ├─ 4. Post-Chapter Hook (Pydantic Extraction):
+       ├─ 3. `generateChapter` action streams paragraphs into the chapter document;
+       │     the client's `useQuery` subscription renders each paragraph as it lands.
+       │     (Enforces Reading Level Matrix + Arc Role
+       │      + Verbatim Tail of Chapter N-1)          → [ LivingStorybookPage.tsx ]
+       │                                                (tap any paragraph to Remix)
+       ├─ 4. Post-Chapter extraction action (validator-checked JSON):
        │     Updates inventory, summarizes chapter, pre-pitches Chapter N+1 Beat Cards,
        │     and crafts self-contained Visual + Cinemagraph Motion Prompts.
        │
-       └─ 5. Dispatches Async Media Pipeline (Celery)
+       └─ 5. Media actions (post-v0 for video)
                │
-               ├─► Step A: Generate Static Illustration (~3s) ─► Pushes `STILL_READY` to UI
+               ├─► Step A: Generate Static Illustration (~3s) ─► chapter.illustration
+               │                                                flips UI to `STILL_READY`
                │
                └─► Step B: Is Key Video Chapter?
                      │
-                     └──► Call Grok Video (`grok-imagine-video`) or Google Veo (Image-to-Video)
-                            │
+                     └──► Call Grok Video (`grok-imagine-video`) or Google Veo
+                            │     from a Convex Node action
                             ├─ Poll async job status (~15-30s)
-                            ├─ Run FFmpeg (`libx264 -crf 26 -pix_fmt yuv420p -movflags +faststart -an`)
-                            ├─ Stage in Object Storage for EPUB 3 Compiler
-                            └─ Push `VIDEO_READY` to UI ───────► [ Static Picture comes alive! ]
+                            ├─ Transcode via external service (no FFmpeg on Convex):
+                            │  `libx264 -crf 26 -pix_fmt yuv420p -movflags +faststart -an`
+                            ├─ Store the MP4 in Convex file storage
+                            └─ chapter.video set ───────► [ Static Picture comes alive! ]
        │
        ├─ 6. Publishing Ceremony:
-       │     Child signs their name on canvas (SVG) -> `Epub3Compiler` packages
-       │     Deluxe Living EPUB (with MP4s) & Lightweight E-Ink EPUB in milliseconds.
+       │     Child signs their name on canvas (SVG) -> `epub.ts` action zips with JSZip.
+       │     v0 ships one lightweight static EPUB; the video EPUB is post-v0.
 ```

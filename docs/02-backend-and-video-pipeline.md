@@ -1,392 +1,467 @@
-# 02 — Backend State Machine & Multimodal Video Pipeline
+# 02 — Convex Backend State Machine & Multimodal Media Pipeline
 
 ## 1. Architectural Overview
 
-If an LLM is left to manage a multi-chapter story purely through chat history, by Chapter 4 it will forget what is in the hero's backpack, hallucinate new characters, or rush the ending.
+If an LLM is left to manage a multi-chapter story purely through chat history, by Chapter 4 it will
+forget what is in the hero's backpack, hallucinate new characters, or rush the ending.
 
-Instead, the **Django + Celery** backend acts as a **deterministic Finite State Machine (FSM)** that owns a canonical `StoryState` in PostgreSQL, feeding strictly scoped context into the LLM at each step and orchestrating asynchronous image and video generation jobs in the background.
+Instead, the **Convex deployment** acts as a **deterministic Finite State Machine (FSM)** that owns
+the canonical story state, feeding strictly scoped context into the LLM at each step and
+orchestrating image and video generation from **actions**.
+
+There is no second backend, no ORM and no job queue of our own:
+
+- **State** lives in three tables (`stories`, `characters`, `chapters`) declared in `convex/schema.ts`.
+  That file is the only source of truth; `docs/04` and `docs/05` read the shapes from it.
+- **Mutations** are the only writers. Every state transition below is one mutation, so the UI never
+  observes a half-applied step.
+- **Actions** call the LLM, image and video providers, then write the result through a mutation.
+  They have no database transaction, so each write must be self-contained.
+- **Queries** are reactive. The child's screen is a `useQuery` subscription: a paragraph or
+  illustration appearing in the database *is* the push event. No SSE, no WebSocket layer, no
+  polling from the client.
+
+`frontend/convex/schema.ts` is the current file. The schema shown in §3 is the target shape for the
+chapter loop; keep them in step as fields land.
 
 ---
 
-## 2. The Canonical `StoryState` Data Structure
+## 2. The Canonical Story View
 
-```json
+Prompts never see the tables directly. A single helper assembles them into the shape the prompt
+templates in `docs/03` expect, so the model sees one stable document regardless of how the tables
+change.
+
+```jsonc
 {
-  "story_id": "st_98234",
-  "status": "CHAPTER_3_DIRECTING",
+  "storyId": "st_98234",
+  "status": "IN_PROGRESS",
   "config": {
-    "reading_level": "AGES_7_9",
-    "total_chapters": 5,
-    "art_style_prompt": "Warm watercolour and ink children's book illustration, Quentin Blake meets Studio Ghibli",
+    "readingLevel": "AGES_7_9",
+    "totalChapters": 5,
+    "artStyle": "Warm watercolour and ink children's book illustration, Quentin Blake meets Studio Ghibli",
     "vibe": "SILLY_ADVENTURE"
   },
-  "world_bible": {
+  "world": {
     "setting": "An underwater bakery inside a giant sunken teapot",
-    "central_problem": "The Royal Sponge Cake has grown wings and floated out the chimney",
+    "centralProblem": "The Royal Sponge Cake has grown wings and floated out the chimney",
     "characters": [
       {
-        "id": "char_1",
+        "id": "j57c0ffee",                                // = the Convex document id
         "name": "Barnaby Whiskers",
         "role": "PROTAGONIST",
-        "visual_description": "A small scruffy brown river otter wearing a tall crooked white chef hat and red polka-dot apron",
-        "reference_image_url": "https://cdn.../char_1_ref.png",
+        "visualDescription": "A small scruffy brown river otter wearing a tall crooked white chef hat and red polka-dot apron",
+        "referenceFileId": "kg2…",                       // optional, post-v0
         "quirk": "Hiccups floating rainbow bubbles whenever he gets nervous"
       }
     ],
-    "inventory": [
-      { "id": "item_1", "name": "Golden Whisk", "status": "IN_BACKPACK", "used_in_chapter": null },
-      { "id": "item_2", "name": "Jar of Glow-Jam", "status": "USED", "used_in_chapter": 2 }
+    "items": [
+      { "id": "item_whisk", "name": "Golden Whisk", "status": "IN_BACKPACK" },
+      { "id": "item_jam", "name": "Jar of Glow-Jam", "status": "USED", "usedInChapter": 2 }
     ],
-    "unresolved_threads": [
-      "Catch the floating Royal Sponge Cake before the Coral Queen arrives"
-    ]
+    "unresolvedThreads": ["Catch the floating Royal Sponge Cake before the Coral Queen arrives"]
   },
   "chapters": [
     {
       "index": 1,
-      "arc_role": "HOOK_AND_INCITING_INCIDENT",
+      "arcRole": "HOOK_AND_INCITING_INCIDENT",
       "status": "LOCKED",
-      "chosen_outline": "Barnaby discovers the Royal Sponge Cake has floated away.",
-      "director_modifiers": {
-        "use_item_id": null,
-        "use_item_name": null,
-        "spotlight_character": null,
-        "weather_or_mood": "BUBBLY_CHAOS",
-        "sound_effects_boost": true,
-        "ending_style": "CLIFFHANGER"
+      "chosenBeat": {
+        "cardId": "card_1a",
+        "style": "BOLD_ACTION",
+        "title": "Chase the cake",
+        "kidFriendlyPitch": "Barnaby grabs a net and swims after the cake!",
+        "iconEmoji": "⚔️"
       },
-      "summary_bullets": [
+      "modifiers": {
+        "useItemId": null,
+        "spotlightCharacterId": null,
+        "weatherOrMood": "BUBBLY_CHAOS",
+        "soundEffectsBoost": true,
+        "endingStyle": "CLIFFHANGER"
+      },
+      "summaryBullets": [
         "Barnaby was preparing for the Coral Queen's party in the sunken teapot bakery.",
         "A mysterious purple current sucked the Royal Sponge Cake out the chimney.",
         "Barnaby grabbed his backpack and swam into the Kelp Forest."
       ],
-      "prose_paragraphs": ["...", "..."],
+      "paragraphs": ["...", "..."],
       "media": {
-        "is_key_video_chapter": true,
-        "illustration_url": "https://cdn.../ch1_still.jpg",
-        "video_url": "https://cdn.../ch1_loop.mp4",
-        "video_status": "COMPLETED"
+        "illustrationFileId": "kg2…",
+        "videoFileId": null,
+        "isKeyVideoChapter": true
       }
     }
   ]
 }
 ```
 
-### The 6 Chapter Lifecycle State Transitions
-For each chapter $N$ of $M$, the state machine steps through 6 strict states:
+**Naming:** the tables, the validators, the prompts and the client all speak **camelCase**, because
+there is no wire boundary to convert across. Every `id` in this view is either a Convex document id
+or a **catalog id minted at story creation** (`item_whisk`, `set_bakery`, `quirk_bubbles`). Never an
+index like `item_1`.
 
-1. **`PITCHING` (Generating the 3 Tarot Cards):**
-   * **Input to LLM:** `world_bible` + `chapters[1..N-1].summary_bullets` + the narrative role of Chapter $N$ (e.g., `Chapter 3 of 5: Rising Action Complication`).
-   * **Output (Structured Pydantic JSON):** 3 distinct plot beat cards (`BOLD_ACTION`, `CLEVER_TRICK`, `SILLY_TWIST`).
-   * *If the child uses the Voice Wildcard:* Audio goes to speech-to-text $\rightarrow$ Prompt 1 normalises their spoken ramble into a safe, hilarious 4th plot card (`KID_WILDCARD`).
-2. **`DIRECTING` (Child Selecting Card & Spice Rack Modifiers):**
-   * Child selects a card and toggles modifiers (e.g., *"Use the Golden Whisk"* + *"Stormy & Wild"*).
-   * The backend marks `Golden Whisk` as `RESERVED_THIS_CHAPTER` so the prose prompt enforces its usage.
-3. **`WRITING` (Streaming Prose via SSE):**
-   * **Input to LLM:** Reading Level Matrix constraints + `world_bible` + summaries of prior chapters + **the exact verbatim last 2 paragraphs of Chapter $N-1$** (for seamless scene continuity) + the chosen card and active Spice Rack modifiers.
-   * **Output:** Streams paragraph-by-paragraph over Server-Sent Events (`StreamingHttpResponse`) so the child can start reading immediately.
-4. **`POST_PROSE_EXTRACTION` (Background Hook):**
-   * Immediately upon stream completion, a fast structured LLM call extracts:
-     1. A 3-bullet summary of Chapter $N$.
-     2. Updated inventory state (`items_used`, `new_items_found`).
-     3. Self-contained **Static Illustration Prompt** and **5-Second Cinemagraph Video Motion Prompt**.
-   * Simultaneously triggers pre-generation of Chapter $N+1$'s Beat Cards so the next chapter loads in `0ms`.
-5. **`REVIEWING` (Reading & Magic Wand Remixing):**
-   * If the child taps Paragraph 3 and clicks **"😂 Funnier"**, the backend sends `Paragraph 2 (context) + Paragraph 3 (target) + Paragraph 4 (context)` to a fast model, replaces `paragraphs[2]` in place, and leaves the running media pipeline untouched.
-6. **`LOCKED`:**
-   * Child clicks **"Next Chapter!"**, locking the text and advancing the pointer to $N+1$.
+### The Chapter Lifecycle
 
----
+Five `chapters.status` values, and one orthogonal `extractionStatus`:
 
-## 3. Django Models (`stories/models.py`)
+1. **`PITCHING`** — 3 beat cards requested (pre-generated while the child reads Chapter *N-1*).
+   **Input:** the story view + `chapters[1..N-1].summaryBullets` + the arc role of Chapter *N*.
+   **Output:** exactly 3 cards (`BOLD_ACTION`, `CLEVER_TRICK`, `SILLY_TWIST`), written as
+   `beatCards`. If the child uses the voice wildcard, Prompt 1 adds a 4th (`KID_WILDCARD`).
+2. **`DIRECTING`** — the child picks a card and sets the spice-rack modifiers. The chosen card is
+   copied into `chosenBeat`; nothing reads `beatCards` afterwards.
+3. **`WRITING`** — the `generateChapter` action streams prose. **Input:** reading-level matrix + the
+   story view + prior `summaryBullets` + the **verbatim last two paragraphs** of Chapter *N-1* + the
+   chosen beat and modifiers. Each finished paragraph is appended by an internal mutation, so the
+   child starts reading immediately.
+4. **`REVIEWING`** — the child reads and may remix a single paragraph (Prompt 5). Extractors may still
+   be running; `extractionStatus` (`PENDING | RUNNING | DONE | FAILED`) tracks that separately so a
+   failed extraction never blocks the reader.
+5. **`LOCKED`** — the child taps "Next Chapter!". Prose and media freeze. Extraction is retried here
+   if it is still `FAILED` or `RUNNING`, because the EPUB needs it.
 
-Combining relational tables (`Story`, `Character`, `Chapter`) with typed `JSONField` attributes gives both relational integrity and schema agility:
-
-```python
-# stories/models.py
-import uuid
-from django.db import models
-
-class StoryStatus(models.TextChoices):
-    SETUP = "SETUP", "World & Character Setup"
-    OUTLINING = "OUTLINING", "Macro Story Map"
-    IN_PROGRESS = "IN_PROGRESS", "Writing Chapters"
-    COMPLETED = "COMPLETED", "Published"
-
-class Story(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    title = models.CharField(max_length=255, blank=True)
-    status = models.CharField(max_length=20, choices=StoryStatus.choices, default=StoryStatus.SETUP)
-    
-    # Pedagogical & Style Locks
-    reading_level = models.CharField(max_length=20, default="AGES_7_9")  # AGES_4_6, AGES_7_9, AGES_10_12
-    total_chapters = models.PositiveSmallIntegerField(default=5)
-    art_style_prompt = models.TextField(
-        default="Warm watercolour and ink children's storybook illustration, whimsical, vibrant"
-    )
-    vibe = models.CharField(max_length=50, default="SILLY_ADVENTURE")
-    
-    # Structured rolling state: {"setting": "...", "central_problem": "...", "inventory": [...], "unresolved_threads": [...]}
-    world_state = models.JSONField(default=dict)
-    
-    # Child's SVG signature from the Publishing Ceremony
-    author_name = models.CharField(max_length=100)
-    author_signature_svg = models.TextField(blank=True)
-    
-    # Generated by `generate_cover_image` (Celery) once the title is locked; declared with
-    # properties="cover-image" in content.opf so Apple Books / Kindle show it on the bookshelf.
-    cover_image = models.ImageField(upload_to="covers/", null=True, blank=True)
-    
-    epub_deluxe_file = models.FileField(upload_to="epubs/deluxe/", null=True, blank=True)
-    epub_eink_file = models.FileField(upload_to="epubs/eink/", null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-class Character(models.Model):
-    story = models.ForeignKey(Story, related_name="characters", on_delete=models.CASCADE)
-    name = models.CharField(max_length=100)
-    role = models.CharField(max_length=50)  # PROTAGONIST, SIDEKICK, PET, ANTAGONIST
-    quirk = models.CharField(max_length=255)
-    visual_description = models.TextField(help_text="Canonical prompt snippet for image/video consistency")
-    reference_image = models.ImageField(upload_to="characters/refs/", null=True, blank=True)
-
-class ChapterStatus(models.TextChoices):
-    PITCHING = "PITCHING", "Pitching 3 Plot Cards"
-    DIRECTING = "DIRECTING", "Child Picking Modifiers"
-    WRITING = "WRITING", "Streaming Prose"
-    REVIEWING = "REVIEWING", "Reading & Remixing"
-    LOCKED = "LOCKED", "Locked & Staged for EPUB"
-
-class Chapter(models.Model):
-    story = models.ForeignKey(Story, related_name="chapters", on_delete=models.CASCADE)
-    index = models.PositiveSmallIntegerField()  # 1-based (1..total_chapters)
-    title = models.CharField(max_length=255, blank=True)
-    arc_role = models.CharField(max_length=50)  # e.g., HOOK_AND_INCITING_INCIDENT, RISING_ACTION, CLIMAX
-    status = models.CharField(max_length=20, choices=ChapterStatus.choices, default=ChapterStatus.PITCHING)
-    
-    # The 3 pitched cards + any voice-wildcard card (shape: StoryBeatCard, snake_case)
-    pitched_beats = models.JSONField(default=list)
-    chosen_beat = models.JSONField(default=dict)
-    # Shape: DirectorModifiers (see schemas.py). Validated on write so the prose prompt
-    # and the EPUB appendix can rely on the same keys.
-    director_modifiers = models.JSONField(default=dict)
-    
-    # Stored as a list of paragraph strings for surgical "tap-paragraph-to-remix" editing
-    paragraphs = models.JSONField(default=list)
-    summary_bullets = models.JSONField(default=list)
-    vocab_notes = models.JSONField(default=list)  # [{"word": "buoyant", "kid_definition": "..."}]
-    
-    # Multimodal Assets
-    is_key_video_chapter = models.BooleanField(default=False)
-    illustration_prompt = models.TextField(blank=True)
-    video_motion_prompt = models.TextField(blank=True)
-    illustration_file = models.ImageField(upload_to="chapters/images/", null=True, blank=True)
-    video_file = models.FileField(upload_to="chapters/videos/", null=True, blank=True)
-    video_job_id = models.CharField(max_length=128, blank=True)
-
-    class Meta:
-        unique_together = ("story", "index")
-        ordering = ["index"]
-```
+`stories.status` is only `SETUP | IN_PROGRESS | COMPLETED`. Chapter-level progress is *not* a story
+status; derive it from `chapters` rather than adding a second state machine.
 
 ---
 
-## 4. Structured LLM Contracts with Pydantic (`stories/schemas.py`)
+## 3. Convex Schema (`convex/schema.ts`)
 
-Using Pydantic schemas with Structured Outputs (supported natively across Gemini, OpenAI, and xAI) guarantees that UI cards and state transitions never fail due to malformed JSON.
+Three tables, with media as `_storage` file ids. Chapter prose lives in its own `chapters` row and
+never inside the `stories` document: **documents are capped at 1 MiB**.
 
-```python
-# stories/schemas.py
-from pydantic import BaseModel, Field
-from typing import Literal
+```ts
+// convex/schema.ts (target shape; the committed file is the source of truth)
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 
-class StoryBeatCard(BaseModel):
-    card_id: str
-    style: Literal["BOLD_ACTION", "CLEVER_TRICK", "SILLY_TWIST", "KID_WILDCARD"]
-    title: str = Field(description="Short punchy title for the UI card, max 5 words")
-    kid_friendly_pitch: str = Field(description="1-2 sentences written directly to the child, max 25 words")
-    icon_emoji: str = Field(description="Single emoji representing this choice")
-    suggested_item_id: str | None = Field(description="ID of a backpack item that fits this beat, if any")
+export const readingLevel = v.union(
+  v.literal("AGES_4_6"),
+  v.literal("AGES_7_9"),
+  v.literal("AGES_10_12"),
+);
+export const storyStatus = v.union(
+  v.literal("SETUP"),
+  v.literal("IN_PROGRESS"),
+  v.literal("COMPLETED"),
+);
+export const chapterStatus = v.union(
+  v.literal("PITCHING"),
+  v.literal("DIRECTING"),
+  v.literal("WRITING"),
+  v.literal("REVIEWING"),
+  v.literal("LOCKED"),
+);
+export const extractionStatus = v.union(
+  v.literal("PENDING"),
+  v.literal("RUNNING"),
+  v.literal("DONE"),
+  v.literal("FAILED"),
+);
+export const itemStatus = v.union(
+  v.literal("IN_BACKPACK"),
+  v.literal("RESERVED_THIS_CHAPTER"),
+  v.literal("USED"),
+);
 
-class ChapterBeatPitchResponse(BaseModel):
-    recap_one_liner: str = Field(description="Exciting 'Previously on...' sentence")
-    cards: list[StoryBeatCard] = Field(min_length=3, max_length=3)
+export const beatCard = v.object({
+  cardId: v.string(),
+  style: v.union(
+    v.literal("BOLD_ACTION"),
+    v.literal("CLEVER_TRICK"),
+    v.literal("SILLY_TWIST"),
+    v.literal("KID_WILDCARD"),
+  ),
+  title: v.string(),
+  kidFriendlyPitch: v.string(),
+  iconEmoji: v.string(),
+  suggestedItemId: v.optional(v.string()), // catalog id, e.g. "item_whisk"
+});
 
-class DirectorModifiers(BaseModel):
-    """Canonical shape of Chapter.director_modifiers.
+export const directorModifiers = v.object({
+  useItemId: v.optional(v.string()),                  // catalog id
+  spotlightCharacterId: v.optional(v.id("characters")), // document id
+  weatherOrMood: v.optional(
+    v.union(
+      v.literal("SUNNY"),
+      v.literal("STORMY"),
+      v.literal("SPOOKY_NIGHT"),
+      v.literal("BUBBLY_CHAOS"),
+    ),
+  ),
+  soundEffectsBoost: v.boolean(),
+  endingStyle: v.union(v.literal("CLIFFHANGER"), v.literal("COZY_PAUSE")),
+});
 
-    The frontend store uses camelCase (useItemId, weatherOrMood, ...); the API layer
-    converts to this snake_case contract on write. Prompt 3 reads `use_item_name`,
-    `spotlight_character`, `weather_or_mood`, `sound_effects_boost`, `ending_style`;
-    the EPUB appendix reads `use_item_name`.
-    """
-    use_item_id: str | None = None
-    use_item_name: str | None = None  # Denormalised at write time from world_state.inventory
-    spotlight_character: str | None = None  # Character name, not ID, so prompts can inline it
-    weather_or_mood: Literal["SUNNY", "STORMY", "SPOOKY_NIGHT", "BUBBLY_CHAOS"] | None = None
-    sound_effects_boost: bool = True
-    ending_style: Literal["CLIFFHANGER", "COZY_PAUSE"] = "CLIFFHANGER"
+export default defineSchema({
+  stories: defineTable({
+    title: v.string(),
+    status: storyStatus,
+    readingLevel,
+    totalChapters: v.number(), // fixed 5 in v0
+    vibe: v.string(),
+    artStyle: v.string(),
+    world: v.object({
+      setting: v.string(),
+      centralProblem: v.string(),
+      unresolvedThreads: v.array(v.string()),
+    }),
+    items: v.array(
+      v.object({
+        id: v.string(), // stable catalog id, never "item_1"
+        name: v.string(),
+        status: itemStatus,
+        usedInChapter: v.optional(v.number()),
+      }),
+    ),
+    authorName: v.optional(v.string()),        // typed name in v0
+    authorSignatureSvg: v.optional(v.string()), // post-v0, sanitised
+    coverFileId: v.optional(v.id("_storage")),
+    epubFileId: v.optional(v.id("_storage")),
+    createdAt: v.number(),
+  }),
 
+  characters: defineTable({
+    storyId: v.id("stories"),
+    name: v.string(),
+    role: v.union(
+      v.literal("PROTAGONIST"),
+      v.literal("SIDEKICK"),
+      v.literal("PET"),
+      v.literal("ANTAGONIST"),
+    ),
+    quirk: v.string(),
+    visualDescription: v.string(),
+    referenceFileId: v.optional(v.id("_storage")), // post-v0 toy scan
+  }).index("by_story", ["storyId"]),
 
-class VocabNote(BaseModel):
-    """One entry in Chapter.vocab_notes. Rendered as an EPUB 3 pop-up footnote."""
-    word: str
-    kid_definition: str
-
-
-class PostChapterExtraction(BaseModel):
-    chapter_title: str
-    summary_bullets: list[str] = Field(min_length=3, max_length=3)
-    items_used: list[str] = Field(description="IDs of backpack items consumed or used in this chapter")
-    new_items_found: list[str] = Field(description="Names of any new items picked up")
-    unresolved_threads: list[str] = Field(description="Remaining open mysteries or goals for future chapters")
-    static_illustration_prompt: str = Field(
-        description="Detailed visual description of the best moment in this chapter, inlining full character visual_descriptions"
-    )
-    video_motion_prompt: str = Field(
-        description="Subtle 5-second cinemagraph motion description based on the static illustration (e.g. 'gentle camera pan, sparkling bubbles rising, character waving')"
-    )
-
-class ScannedToyCharacterSheet(BaseModel):
-    """Used when a child snaps a photo of their real stuffed animal, LEGO build, or drawing."""
-    suggested_name: str = Field(description="A fun, affectionate storybook name for this toy")
-    species_or_type: str = Field(description="Short label, e.g. 'Floppy Plush Bunny' or 'Red Lego Knight'")
-    canonical_visual_description: str = Field(
-        description=(
-            "Detailed, objective visual description of the toy's colours, textures, clothing, and proportions "
-            "so an illustrator can draw this exact toy in every chapter (30-45 words)."
-        )
-    )
-    suggested_quirk: str = Field(
-        description="A cute, funny personality quirk inspired by how the toy looks (e.g. 'One ear flops over when thinking')"
-    )
+  chapters: defineTable({
+    storyId: v.id("stories"),
+    index: v.number(), // 1-based
+    title: v.optional(v.string()),
+    arcRole: v.string(),
+    status: chapterStatus,
+    beatCards: v.array(beatCard),      // generated, never edited
+    chosenBeat: v.optional(beatCard),
+    modifiers: v.optional(directorModifiers),
+    paragraphs: v.array(v.string()),
+    summaryBullets: v.array(v.string()),
+    vocabNotes: v.array(v.object({ word: v.string(), kidDefinition: v.string() })),
+    extractionStatus,
+    illustrationPrompt: v.optional(v.string()),  // written by the extractor
+    videoMotionPrompt: v.optional(v.string()),
+    illustrationFileId: v.optional(v.id("_storage")),
+    videoFileId: v.optional(v.id("_storage")),   // post-v0
+    isKeyVideoChapter: v.boolean(),              // post-v0
+  })
+    .index("by_story", ["storyId", "index"])
+    .index("by_story_status", ["storyId", "status"]),
+});
 ```
+
+There is no separate `OUTLINING` story status and no `POST_PROSE_EXTRACTION` chapter status: the
+extractor runs *during* `REVIEWING`, and `extractionStatus` says how it is going.
 
 ---
 
-## 5. The Celery Media Pipeline (Static Image $\rightarrow$ Grok/Veo Video $\rightarrow$ FFmpeg)
+## 4. Structured LLM Contracts
 
-### Solving Character Consistency & Async Latency
-1. **Image-to-Video Anchor:** First, generate the static chapter illustration (`ch_N.jpg`) in ~3 seconds and push it immediately to the UI over WebSocket/SSE.
-2. **Seamless First Frame:** For key chapters (`is_key_video_chapter=True`), pass that exact static illustration URL (`image_url`) to **xAI's `grok-imagine-video`** (or **Google Veo**). This guarantees **100% visual continuity** between the static poster image and the first frame of the animated video!
-3. **FFmpeg WebKit/EPUB 3 Pass:** E-readers like Apple Books require H.264 Main Profile (`yuv420p`) and small file sizes. The Celery worker runs a fast FFmpeg pass to compress the 5-second clip to ~1.2 MB with `-movflags +faststart`.
+Two things have to line up:
 
-```python
-# stories/tasks.py
-import subprocess
-import tempfile
-import httpx
-import xai_sdk
-from celery import shared_task, chain
-from django.core.files.base import ContentFile
-from .models import Chapter
+1. **A JSON Schema sent to the provider** so structured-output mode cannot return prose instead of
+   JSON.
+2. **A Convex validator** on the mutation that stores the result, so a malformed object is rejected
+   before it reaches the database.
 
-@shared_task
-def trigger_chapter_media_pipeline(chapter_id: int):
-    chapter = Chapter.objects.select_related("story").get(id=chapter_id)
-    if chapter.is_key_video_chapter:
-        chain(
-            generate_chapter_illustration.s(chapter.id),
-            generate_key_chapter_video.s(),
-            optimize_video_for_epub.s(),
-        ).apply_async()
-    else:
-        generate_chapter_illustration.delay(chapter.id)
+Convex validators are not JSON Schema and are not a runtime parser for arbitrary values, so keep one
+`convex/llm/jsonSchemas.ts` next to the validators and a unit test asserting each schema's required
+keys match the validator's fields. That test is the whole guarantee; without it the model can drop a
+field and nothing notices until render time.
 
-@shared_task
-def generate_cover_image(story_id: str) -> str:
-    """Runs once the title is locked (after Chapter 1 extraction). Uses the protagonist's
-    reference image + art_style_prompt so the cover matches the chapter illustrations.
-    Saves to Story.cover_image, which Epub3Compiler declares as properties="cover-image"."""
-    ...
-    return story_id
+Validators are also **not instructions**. The description text below ("max 25 words", "inline the
+full visual description") belongs in the prompt, and the prompt is the only thing that makes the
+model obey it.
 
-@shared_task
-def generate_chapter_illustration(chapter_id: int) -> int:
-    chapter = Chapter.objects.select_related("story").get(id=chapter_id)
-    # 1. Generate static illustration using Grok Imagine / Imagen 3
-    # 2. Save to chapter.illustration_file
-    # 3. Broadcast WebSocket/SSE event:
-    #    {"type": "ILLUSTRATION_READY", "chapter_id": chapter.id, "url": chapter.illustration_file.url}
-    return chapter.id
+```ts
+// convex/llm/jsonSchemas.ts — one schema per call, mirrored by a validator
+export const beatCardSchema = {
+  type: "object",
+  required: ["cardId", "style", "title", "kidFriendlyPitch", "iconEmoji"],
+  properties: {
+    cardId: { type: "string" },
+    style: {
+      type: "string",
+      enum: ["BOLD_ACTION", "CLEVER_TRICK", "SILLY_TWIST", "KID_WILDCARD"],
+    },
+    title: { type: "string", description: "Punchy title for the UI card, max 5 words" },
+    kidFriendlyPitch: {
+      type: "string",
+      description: "1-2 sentences written directly to the child, max 25 words",
+    },
+    iconEmoji: { type: "string", description: "Single emoji for this choice" },
+    suggestedItemId: { type: ["string", "null"] },
+  },
+} as const;
 
-@shared_task(bind=True, max_retries=3)
-def generate_key_chapter_video(self, chapter_id: int) -> tuple[int, str]:
-    chapter = Chapter.objects.select_related("story").get(id=chapter_id)
-    
-    # Using xAI SDK's image-to-video capability (handles async polling under the hood)
-    client = xai_sdk.Client()
-    
-    full_motion_prompt = (
-        f"{chapter.video_motion_prompt}. "
-        f"Style: {chapter.story.art_style_prompt}. "
-        "Gentle storybook animation, smooth cinemagraph motion, child-friendly."
-    )
-    
-    # Pass the just-generated chapter illustration as the starting frame!
-    response = client.video.generate(
-        prompt=full_motion_prompt,
-        model="grok-imagine-video",
-        image_url=chapter.illustration_file.url,  # Presigned S3/R2 URL
-        duration=5,          # 5-second storybook cinemagraph
-        aspect_ratio="4:3",  # Classic storybook proportion
-        resolution="480p",   # Ideal balance of crispness and nimble EPUB file size
-    )
-    
-    return chapter.id, response.url
-
-@shared_task
-def optimize_video_for_epub(payload: tuple[int, str]) -> int:
-    chapter_id, remote_video_url = payload
-    chapter = Chapter.objects.get(id=chapter_id)
-    
-    with tempfile.NamedTemporaryFile(suffix=".mp4") as raw_in, \
-         tempfile.NamedTemporaryFile(suffix=".mp4") as opt_out:
-        
-        # Download raw MP4 from Grok / Veo
-        with httpx.stream("GET", remote_video_url) as r:
-            r.raise_for_status()
-            for chunk in r.iter_bytes():
-                raw_in.write(chunk)
-        raw_in.flush()
-        
-        # FFmpeg pass for strict EPUB 3 / Apple Books / iOS Safari compatibility:
-        # - H.264 Main Profile, yuv420p pixel format (required by Apple Books WebKit)
-        # - CRF 26 to keep a 5-second clip around ~1.2 MB
-        # - -movflags +faststart so the video plays immediately on page turn
-        # - -an strips silent/unneeded audio tracks so it doesn't interrupt background audio
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", raw_in.name,
-            "-c:v", "libx264",
-            "-profile:v", "main",
-            "-pix_fmt", "yuv420p",
-            "-crf", "26",
-            "-preset", "fast",
-            "-movflags", "+faststart",
-            "-an",
-            opt_out.name,
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
-        
-        opt_out.seek(0)
-        chapter.video_file.save(
-            f"ch_{chapter.index}_living.mp4",
-            ContentFile(opt_out.read()),
-            save=True,
-        )
-    
-    # Broadcast WebSocket/SSE event:
-    # {"type": "VIDEO_READY", "chapter_id": chapter.id, "video_url": chapter.video_file.url}
-    return chapter.id
+export const beatPitchSchema = {
+  type: "object",
+  required: ["recapOneLiner", "cards"],
+  properties: {
+    recapOneLiner: { type: "string" },
+    cards: { type: "array", items: beatCardSchema, minItems: 3, maxItems: 3 },
+  },
+} as const;
 ```
+
+The post-chapter extractor writes through a mutation whose argument validator *is* the contract:
+
+```ts
+// convex/chapters.ts
+import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+
+export const applyExtraction = internalMutation({
+  args: {
+    chapterId: v.id("chapters"),
+    chapterTitle: v.string(),
+    summaryBullets: v.array(v.string()), // exactly 3, checked below
+    itemsUsed: v.array(v.string()),      // catalog ids
+    newItems: v.array(v.object({ id: v.string(), name: v.string() })),
+    unresolvedThreads: v.array(v.string()),
+    illustrationPrompt: v.string(),
+    videoMotionPrompt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.summaryBullets.length !== 3) {
+      throw new Error("extraction must return exactly 3 summary bullets");
+    }
+    // update chapter, then story.items / story.world.unresolvedThreads in the same mutation
+  },
+});
+```
+
+The image/video prompts are stored on the chapter in the same write, because they are derived from
+the prose that will never change again.
+
+### Vision "Snap Your Real Toy" (post-v0)
+
+Same pattern, one call, one schema: `suggestedName`, `speciesOrType`, `canonicalVisualDescription`
+(30–45 words, objective colours/textures/proportions), `suggestedQuirk`. The photo is uploaded with
+`generateUploadUrl`, the action reads it back through `ctx.storage.get`, and the generated
+description becomes `characters.visualDescription` — the same field every prompt inlines, so a
+scanned toy and a catalog-built character are indistinguishable downstream.
+
+---
+
+## 5. The Media Pipeline (actions, external binaries)
+
+### Solving character consistency and latency
+
+1. **Static illustration first.** The `illustrateChapter` action generates `ch_N` in ~3s, stores it
+   with `ctx.storage.store`, and writes `illustrationFileId`. The child's frame flips to the still
+   while they are still reading.
+2. **Image-to-video anchor (post-v0).** For key chapters, pass the *same* still to
+   `grok-imagine-video` (or Veo) as `image_url`, so frame one matches the poster exactly.
+3. **Transcode elsewhere.** A Convex action has no FFmpeg binary and a 10-minute Node cap, so the
+   H.264 pass (`-crf 26 -pix_fmt yuv420p -movflags +faststart -an`) runs on an external service.
+   Failure is non-fatal: the chapter keeps its still. See `decisions.md` → *Async + media
+   processing* for the FFmpeg Micro / Trigger.dev trade-off.
+
+```ts
+// convex/media.ts
+import { v } from "convex/values";
+import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+export const illustrateChapter = internalAction({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    const chapter = await ctx.runQuery(internal.chapters.getForPipeline, { chapterId });
+    const prompt = [
+      chapter.illustrationPrompt,
+      `Style: ${chapter.artStyle}.`,
+      "Children's storybook illustration, no text, no speech bubbles.",
+    ].join(" ");
+
+    const res = await fetch(`${process.env.IMAGE_API_URL}/generate`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${process.env.IMAGE_API_KEY}`,
+      },
+      body: JSON.stringify({ prompt, aspectRatio: "4:3" }),
+    });
+    if (!res.ok) throw new Error(`illustration failed: ${res.status}`);
+    const { url } = (await res.json()) as { url: string };
+
+    const image = await fetch(url);
+    const fileId = await ctx.storage.store(await image.blob());
+    await ctx.runMutation(internal.chapters.setIllustration, { chapterId, fileId });
+  },
+});
+
+export const animateKeyChapter = internalAction({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    const chapter = await ctx.runQuery(internal.chapters.getForPipeline, { chapterId });
+    if (!chapter.isKeyVideoChapter || !chapter.illustrationUrl) return;
+
+    const stillUrl = chapter.illustrationUrl; // public URL from ctx.storage.getUrl
+    const create = await fetch(`${process.env.VIDEO_API_URL}/v1/video/generations`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${process.env.VIDEO_API_KEY}`,
+      },
+      body: JSON.stringify({
+        prompt: `${chapter.videoMotionPrompt} Style: ${chapter.artStyle}.`,
+        image_url: stillUrl,
+        duration: 5,
+        aspect_ratio: "4:3",
+        resolution: "480p",
+      }),
+    });
+    if (!create.ok) return; // non-fatal: keep the still
+    const { id } = (await create.json()) as { id: string };
+
+    // Poll inside the action; the 10-minute Node cap is the ceiling.
+    // shortcut: fixed 2s poll, cap at 30 attempts; move to a scheduled action if
+    // providers get slower.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const status = await fetch(`${process.env.VIDEO_API_URL}/v1/video/generations/${id}`, {
+        headers: { authorization: `Bearer ${process.env.VIDEO_API_KEY}` },
+      });
+      const body = (await status.json()) as { status: string; url?: string };
+      if (body.status !== "completed") continue;
+      if (!body.url) return;
+      // Transcode + store through the external service, then:
+      // await ctx.runMutation(internal.chapters.setVideo, { chapterId, fileId });
+      return;
+    }
+  },
+});
+```
+
+Two rules that keep this from becoming a retry furnace:
+
+- Every action writes its own terminal state (`DONE` / `FAILED`) so the UI can stop waiting.
+- Nothing in the pipeline is required for the book to exist. A missing still is a plainer EPUB; a
+  missing video is a still. Only prose and the EPUB itself are load-bearing.
 
 ---
 
 ## 6. Cost & Token Guardrails for Production
 
-Because video generation is the highest marginal cost in the pipeline, you can control unit economics gracefully while making the feature feel *even more special* to the child:
+Video generation is the highest marginal cost in the pipeline.
 
-* **"Magic Living Picture Tickets" per Book:**
-  * Every 5-chapter book includes **2 or 3 Living Picture Tickets** (e.g., automatically applied to **Chapter 1** and the **Final Chapter**, plus **1 Golden Ticket** the child can slap onto whichever middle chapter they loved best!).
-* **480p / 5-Second Cinemagraphs:**
-  * Inside an e-reader frame (`max-height: 62vh`), a 5-second `480p` watercolour loop looks indistinguishable from `1080p`, generates twice as fast, costs significantly less, and keeps the final Deluxe `.epub` archive around **6–10 MB**—small enough to AirDrop or email in seconds.
+- **Hard per-story budget**, configured in one place, counting retries: **$0.50 and 6 images per
+  book** to start. Exceeding it fails loudly with a clear message; it never silently spends.
+- **"Magic Living Picture Tickets" per book (post-v0):** 2–3 per 5-chapter book, automatically
+  applied to Chapter 1 and the finale, plus one golden ticket the child can slap onto the middle
+  chapter they loved.
+- **480p / 5-second cinemagraphs:** inside an e-reader frame (`max-height: 62vh`) a 480p loop is
+  indistinguishable from 1080p, generates twice as fast, and keeps the archive small enough to share.
+- The budget counter lives on the `stories` row and is incremented by the action that spends, in the
+  same mutation that records the result. A counter updated by the UI is not a budget.

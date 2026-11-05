@@ -17,6 +17,120 @@ Revisit when:
 
 ---
 
+## Local text model for dev — oMLX + Gemma 4 E4B — accepted, 2026-11-05
+
+**Decision:** `LOCAL_LLM_URL` (plus optional `LOCAL_LLM_API_KEY` and `LOCAL_LLM_MODEL`) points
+`getTextProvider` at an OpenAI-compatible server. Unset by default, so Gemini stays in charge;
+setting it moves every purpose — prose and structured — to the one small local model.
+
+**Why:** rehearsing the story pipeline against a paid hosted model costs money and a round trip per
+run, and `pitchChapter` only needs JSON of the right shape to prove the plumbing.
+
+**Gotchas (oMLX 5005 on the dev Mac, verified 2026-11-05):**
+
+- oMLX binds `127.0.0.1:5005` and requires a bearer key (see `~/.omlx/settings.json`), so the Convex
+  Docker backend cannot reach `localhost:5005`; use `http://host.docker.internal:5005/v1`. Verified
+  2026-11-05 from inside `tales_together-backend-1`: unkeyed `401`, keyed `200`.
+- Model ids are what `/v1/models` returns (`gemma-4-e4b-it-4bit`), not the full
+  `mlx-community/…` repo path.
+- The 4B model honours `response_format: json_schema` and tolerates the `nullable` keyword the
+  beat-card schema uses, but its prose is nonsense. Smoke tests only.
+- Setup: `npx convex env set LOCAL_LLM_URL http://host.docker.internal:5005/v1` and
+  `npx convex env set LOCAL_LLM_API_KEY …`; `npx convex env remove LOCAL_LLM_URL` restores Gemini.
+
+**Revisit when:** a dev needs local prose worth reading, or CI needs to run without the Mac.
+
+## Text model — Gemini 3.8 Flash — accepted, 2026-11-05
+
+**Decision:** pin two Gemini model ids in `convex/lib/config.ts`:
+
+- `gemini-3.8-flash` (GA 2026-09-02) for prose and beat cards.
+- `gemini-3.5-flash-lite` (GA 2026-07-21) for structured calls, selected with
+  `getTextProvider("structured")`.
+
+Both are overridable per deployment with `GEMINI_PROSE_MODEL` / `GEMINI_FAST_MODEL`. Never use
+`gemini-flash-latest`: the alias moves, and a book written either side of a move has two voices.
+
+**Why:** 2.5 Flash is now limited to projects that already used it; new projects are pointed at 3.x.
+Pinning a version beats an alias for a product whose output is a keepsake.
+
+**Gotchas (from the Gemini API docs on 2026-11-05):**
+
+- Gemini 3.x rejects sampling parameters. Sending `temperature`, `top_p` or `top_k` is an error, not a
+  no-op. The adapter no longer sends them anywhere.
+- `thinkingBudget` is replaced by the string enum `thinkingLevel: "low" | "medium" | "high"`.
+  `minimal` is not supported on 3.8 Flash. Structured calls send `low`; prose leaves the model
+  default.
+- Reasoning still arrives as a `parts[]` entry with `thought: true` and must be filtered before
+  parsing, as recorded in the superseded entry below.
+- 3.8 Flash output cap is 65,536 tokens, so the old `maxOutputTokens` truncation problem is gone;
+  keep the explicit cap anyway so a runaway reply cannot bill for 64k tokens.
+
+**Verification status:** request-shape tests pass (model id, no sampling params, `thinkingLevel` for
+JSON). The live end-to-end call is **pending** — the local Convex backend (Docker) was stopped during
+the switch. Rerun `npx convex dev --once`, then pitch a fresh chapter to confirm both model ids.
+
+**Revisit when:** `gemini-3.5-flash-lite` rejects `responseSchema`, or a newer Flash ships and the
+prose check in `docs/03` no longer needs the upgrade.
+
+---
+
+## Text model — Gemini — superseded, 2026-10-30
+
+**Decision:** `gemini-2.5-flash` behind the `TextProvider` interface, with structured calls using
+`responseSchema`. The Gemini-vs-Anthropic eval in the entry below was **skipped**, not faked: only a
+Gemini key exists, so there is nothing to compare against.
+
+**Why:** the plan called for a real eval or an honest skip. A one-armed eval is a rubber stamp.
+
+**Gotchas (verified 2026-10-30 against the live deployment):**
+
+- 2.5 models return internal reasoning as a separate `parts[]` entry with `thought: true`.
+  Concatenating every part feeds the reasoning prose into `JSON.parse`.
+- Thinking tokens are billed against `maxOutputTokens`, so a structured reply truncates mid-string.
+  At `maxOutputTokens: 900` the pitch JSON ended mid-quote. Structured calls now send
+  `thinkingConfig: { thinkingBudget: 0 }`; prose keeps the default thinking budget.
+- A 3-card pitch takes ~2.4s wall clock including cold start.
+- The parse is still defensive: it recovers a JSON object embedded in prose, and drops
+  `suggestedItemId` values that are not catalog ids.
+- `pitchChapter` is idempotent: an existing `beatCards` array is returned without a provider call,
+  so a double tap cannot double-spend.
+
+**Revisit when:** prose at AGES_7_9 reads worse than the docs/03 examples, or an Anthropic key
+appears and the two-model eval can actually run.
+
+---
+
+
+
+## Docs ported off Django/Jinja/Pydantic — accepted, 2026-10-30
+
+**Decision:** `docs/README.md` and `docs/02`, `03`, `04`, `05` now describe Convex + TypeScript only.
+The Django models, Celery tasks, Pydantic schemas, Jinja templates, `pytest` suites and
+`/api/...` endpoints are gone from the blueprint. Where the code was the point (compiler, prompts,
+state machine) it is rewritten in the language we actually run.
+
+**Why:** `decisions.md` retired Django on 2026-10-27, but the blueprint still told a reader to build
+it. A doc that contradicts the repo costs a rewrite of real code, not a doc edit.
+
+**Gotchas:**
+
+- The component sketches in `docs/04` §5–§10 keep Tailwind class strings and `framer-motion` calls.
+  They are labelled as behaviour reference, with a conversion table to `StyleSheet` /
+  `react-native-reanimated`. Porting them to RNX is deliberately deferred until each screen is built.
+- `docs/02` now writes prose with an action that appends paragraphs by mutation; there is no SSE.
+  Anything that assumes a server-push channel has to be rethought, not renamed.
+- `docs/05` compiles in a Convex action, so CSS and subset fonts ship inside the bundle through a
+  generated `assets.ts` (`npm run epub:assets`). Convex actions cannot read the filesystem.
+- Video remains post-v0. The doc keeps the pipeline so the templates are not rewritten twice.
+- `docs/03`'s readability check is now sentence length + a cliché list, not Flesch-Kincaid. A score
+  nobody acts on is decoration.
+
+**Revisit when:** a doc section is older than the code it describes, or someone adds a second
+backend language.
+
+---
+
 ## Safety, spend, delivery — accepted, 2026-10-27
 
 **Decision:**

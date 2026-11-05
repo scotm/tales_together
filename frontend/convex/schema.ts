@@ -107,9 +107,11 @@ export default defineSchema({
   chapters: defineTable({
     storyId: v.id("stories"),
     index: v.number(),
+    title: v.optional(v.string()), // set by the post-chapter extraction
     arcRole: v.string(),
     status: chapterStatus,
     beatCards: v.array(beatCard),
+    recapOneLiner: v.optional(v.string()),
     chosenBeat: v.optional(beatCard),
     modifiers: v.optional(directorModifiers),
     paragraphs: v.array(v.string()),

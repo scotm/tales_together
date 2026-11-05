@@ -1,5 +1,9 @@
 # 01 — Product Vision & Cross-Screen UX Features
 
+> **Scope note:** this file describes the whole product. `decisions.md` defines what v0 ships —
+> text + one static illustration + EPUB, ages 7–9, five chapters, no accounts, no video, no voice
+> wildcard, no toy scanning. Treat everything else here as the roadmap, not the current spec.
+
 ## Core Philosophy: The Child as Director & Co-Author
 
 The magic of **Tales Together** isn't "press a button, get a book"—it is treating the child as the **Director and Co-Author**, while the AI acts as an enthusiastic scribe and illustrator that handles the heavy lifting of prose, continuity, and book formatting.

@@ -59,3 +59,51 @@ test("get returns story, chapters and characters", async () => {
   expect(result?.chapters).toHaveLength(5);
   expect(result?.characters[0].role).toBe("PROTAGONIST");
 });
+
+test("create rejects a backpack that is not exactly three items", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(
+    t.mutation(api.stories.create, {
+      ...sample,
+      backpackItems: sample.backpackItems.slice(0, 2),
+    }),
+  ).rejects.toThrow(/exactly 3/);
+});
+
+test("create rejects an item that is not in the catalog", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(
+    t.mutation(api.stories.create, {
+      ...sample,
+      backpackItems: [
+        ...sample.backpackItems.slice(0, 2),
+        { id: "item_1", name: "Mystery Box" },
+      ],
+    }),
+  ).rejects.toThrow(/unknown backpack item: item_1/);
+});
+
+test("create rejects the same item twice", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(
+    t.mutation(api.stories.create, {
+      ...sample,
+      backpackItems: [
+        { id: "item_whisk", name: "Golden Whisk" },
+        { id: "item_whisk", name: "Golden Whisk" },
+        { id: "item_jam", name: "Jar of Glow-Jam" },
+      ],
+    }),
+  ).rejects.toThrow(/distinct/);
+});
+
+test("create rejects a blank hero name", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(
+    t.mutation(api.stories.create, { ...sample, protagonistName: "  " }),
+  ).rejects.toThrow(/hero name/);
+});

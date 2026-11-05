@@ -8,6 +8,17 @@
  * @module
  */
 
+import type * as catalog from "../catalog.js";
+import type * as chapters from "../chapters.js";
+import type * as lib_config from "../lib/config.js";
+import type * as llm_beatCards from "../llm/beatCards.js";
+import type * as llm_gemini from "../llm/gemini.js";
+import type * as llm_jsonSchemas from "../llm/jsonSchemas.js";
+import type * as llm_moderation from "../llm/moderation.js";
+import type * as llm_openai from "../llm/openai.js";
+import type * as llm_promptMatrices from "../llm/promptMatrices.js";
+import type * as llm_prompts from "../llm/prompts.js";
+import type * as llm_provider from "../llm/provider.js";
 import type * as stories from "../stories.js";
 
 import type {
@@ -17,6 +28,17 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  catalog: typeof catalog;
+  chapters: typeof chapters;
+  "lib/config": typeof lib_config;
+  "llm/beatCards": typeof llm_beatCards;
+  "llm/gemini": typeof llm_gemini;
+  "llm/jsonSchemas": typeof llm_jsonSchemas;
+  "llm/moderation": typeof llm_moderation;
+  "llm/openai": typeof llm_openai;
+  "llm/promptMatrices": typeof llm_promptMatrices;
+  "llm/prompts": typeof llm_prompts;
+  "llm/provider": typeof llm_provider;
   stories: typeof stories;
 }>;
 
