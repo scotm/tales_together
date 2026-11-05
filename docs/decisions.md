@@ -40,6 +40,32 @@ run, and `pitchChapter` only needs JSON of the right shape to prove the plumbing
 
 **Revisit when:** a dev needs local prose worth reading, or CI needs to run without the Mac.
 
+## Chapter extraction — accepted, 2026-11-05
+
+**Decision:** Prompt 4 runs as an `internalAction` scheduled by `writeChapter` the moment prose is
+stored. It writes through one `applyExtraction` mutation whose args *are* the contract; a malformed
+reply fails the action and leaves `extractionStatus: FAILED` without touching the chapter the child
+is reading.
+
+**Why:** chapter N+1 is pitched and written from `summaryBullets`, the resolved backpack and the
+unresolved threads — none of which exist until the extractor has run. Art prompts are derived from
+prose that never changes again, so they are stored in the same write.
+
+**Gotchas (verified 2026-11-05 on a two-chapter live run):**
+
+- `ctx.scheduler.runAfter` needs an **internal** function. A public `action` is invisible to
+  `internal.*` and the scheduler call fails typecheck with a confusing "property does not exist".
+- `unresolvedThreads` is replaced by the extractor's full list, never appended. Stated in the prompt
+  because the model's instinct is to report only what changed.
+- Hallucinated ids are dropped in `parseExtraction`: an unknown `itemsUsed` id must not mark a
+  backpack item the child never had, and a `newItems` id that already exists is the model repeating
+  itself.
+- Flash-Lite wrote chapter 2 at 274 words, under the 400–550 target, and the lint does not check
+  length. Word-count drift between chapters is currently unpoliced.
+
+**Revisit when:** chapters read as too short, or extraction failures start showing up in real runs
+(there is no retry until the lock step lands in S5).
+
 ## Text model — prose on Gemini 3.5 Flash-Lite — accepted, 2026-11-05
 
 **Decision:** `GEMINI_PROSE_MODEL` defaults to `gemini-3.5-flash-lite`, the same model as

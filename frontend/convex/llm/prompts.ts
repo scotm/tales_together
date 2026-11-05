@@ -233,3 +233,57 @@ Write the chapter prose now. Separate each paragraph with a double newline. Do n
 
   return { system, user };
 }
+
+export interface ExtractionPromptInput {
+  chapterIndex: number;
+  chapterParagraphs: string[];
+  characters: { name: string; visualDescription: string }[];
+  artStyle: string;
+  availableItems: PitchItem[];
+}
+
+/** Prompt 4, docs/03 §7. Returns the two parts the provider needs. */
+export function extractionPrompt(input: ExtractionPromptInput): {
+  system: string;
+  user: string;
+} {
+  const sheets = input.characters
+    .map((character) => `- ${character.name}: "${character.visualDescription}"`)
+    .join("\n");
+
+  const system = `
+You are the Continuity Script Supervisor and Cinematographer for an animated children's storybook.
+Read the newly generated text for Chapter ${input.chapterIndex} and extract the updated story state and visual generation prompts.
+
+<visual_prompting_rules>
+1. SELF-CONTAINED CHARACTER DESCRIPTIONS: Image and video models have NO memory of who a character is. Never write just a character's name in illustrationPrompt or videoMotionPrompt. Inline their exact visual description every time.
+2. SINGLE CLEAR ACTION: Pick the single most visually exciting, iconic moment from the chapter. Describe the foreground subject, background environment, lighting, and facial expression.
+3. NO TEXT IN IMAGES: Never ask for speech bubbles, signs, letters, or written words in the illustration.
+4. CINEMAGRAPH MOTION (videoMotionPrompt): Describe a smooth, subtle 5-second motion starting from the exact static illustration frame. Focus on ambient physics (floating bubbles, flickering lantern light, wind in leaves, water ripples) plus one clear character gesture. Avoid multi-cut camera jumps.
+</visual_prompting_rules>
+`.trim();
+
+  const user = `
+<canonical_character_sheets>
+${sheets}
+</canonical_character_sheets>
+
+<art_style_lock>
+${input.artStyle}
+</art_style_lock>
+
+<current_backpack_inventory>
+${JSON.stringify(input.availableItems)}
+</current_backpack_inventory>
+
+<chapter_text>
+${input.chapterParagraphs.join("\n\n")}
+</chapter_text>
+
+Extract chapterTitle, exactly 3 summaryBullets, itemsUsed (catalog ids from the inventory), newItems (each with a catalog id and a name), unresolvedThreads, illustrationPrompt, and videoMotionPrompt.
+
+unresolvedThreads must list EVERY thread still open when the chapter ends, not just the new ones: the list replaces the previous one.
+`.trim();
+
+  return { system, user };
+}

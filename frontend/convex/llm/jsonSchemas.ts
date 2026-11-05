@@ -44,3 +44,64 @@ export const BEAT_PITCH_SCHEMA = {
     },
   },
 } as const;
+
+/**
+ * Prompt 4 output. Mirrored by the `applyExtraction` validator in
+ * `chapters.ts`; `extraction.test.ts` keeps the two in step.
+ */
+export const EXTRACTION_SCHEMA = {
+  type: "object",
+  required: [
+    "chapterTitle",
+    "summaryBullets",
+    "itemsUsed",
+    "newItems",
+    "unresolvedThreads",
+    "illustrationPrompt",
+    "videoMotionPrompt",
+  ],
+  properties: {
+    chapterTitle: {
+      type: "string",
+      description: "Short chapter title, max 5 words",
+    },
+    summaryBullets: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: { type: "string" },
+      description: "Exactly 3 short past-tense sentences of what happened",
+    },
+    itemsUsed: {
+      type: "array",
+      items: { type: "string" },
+      description: "Catalog ids of backpack items used in this chapter",
+    },
+    newItems: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "name"],
+        properties: {
+          id: { type: "string", description: "e.g. item_rainbow_feather" },
+          name: { type: "string" },
+        },
+      },
+      description: "Items picked up in this chapter, empty if none",
+    },
+    unresolvedThreads: {
+      type: "array",
+      items: { type: "string" },
+      description: "Every thread still open at the end of this chapter",
+    },
+    illustrationPrompt: {
+      type: "string",
+      description:
+        "One iconic moment, with full visual descriptions inlined, no text",
+    },
+    videoMotionPrompt: {
+      type: "string",
+      description: "Subtle 5-second motion starting from that frame",
+    },
+  },
+} as const;

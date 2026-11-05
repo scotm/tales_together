@@ -120,6 +120,8 @@ export default defineSchema({
       v.object({ word: v.string(), kidDefinition: v.string() }),
     ),
     extractionStatus,
+    illustrationPrompt: v.optional(v.string()), // written by the extractor
+    videoMotionPrompt: v.optional(v.string()),
     illustrationFileId: v.optional(v.id("_storage")),
   })
     .index("by_story", ["storyId", "index"])

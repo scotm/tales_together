@@ -2,15 +2,21 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   mutation,
 } from "./_generated/server";
 import { type ParsedBeatCard, parseBeatPitch } from "./llm/beatCards";
-import { BEAT_PITCH_SCHEMA } from "./llm/jsonSchemas";
+import { parseExtraction } from "./llm/extraction";
+import { BEAT_PITCH_SCHEMA, EXTRACTION_SCHEMA } from "./llm/jsonSchemas";
 import { moderate } from "./llm/moderation";
 import { getArcRoleInstructions } from "./llm/promptMatrices";
-import { beatPitchPrompt, chapterProsePrompt } from "./llm/prompts";
+import {
+  beatPitchPrompt,
+  chapterProsePrompt,
+  extractionPrompt,
+} from "./llm/prompts";
 import { lintProse } from "./llm/proseLint";
 import { getTextProvider } from "./llm/provider";
 import { beatStyle } from "./schema";
@@ -306,6 +312,148 @@ export const writeChapter = action({
       chapterId,
       paragraphs,
     });
+
+    // Background work: continuity for the next chapter, art prompts for later.
+    await ctx.scheduler.runAfter(0, internal.chapters.extractChapter, {
+      chapterId,
+    });
     return paragraphs;
+  },
+});
+
+export const beginExtraction = internalMutation({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    const chapter = await ctx.db.get(chapterId);
+    if (!chapter) throw new Error("chapter not found");
+    if (chapter.paragraphs.length === 0) {
+      throw new Error("chapter has no prose to extract");
+    }
+    if (chapter.extractionStatus === "DONE") return;
+    await ctx.db.patch(chapterId, { extractionStatus: "RUNNING" });
+  },
+});
+
+/** A failed extraction never blocks the reader; it is retried on lock. */
+export const failExtraction = internalMutation({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    await ctx.db.patch(chapterId, { extractionStatus: "FAILED" });
+  },
+});
+
+/**
+ * Prompt 4 lands here (docs/02 §4): the argument validator is the contract, so
+ * a malformed object is rejected before any table changes.
+ */
+/** Shared with the schema-parity test; keep in step with EXTRACTION_SCHEMA. */
+export const extractionFields = {
+  chapterTitle: v.string(),
+  summaryBullets: v.array(v.string()),
+  itemsUsed: v.array(v.string()),
+  newItems: v.array(v.object({ id: v.string(), name: v.string() })),
+  unresolvedThreads: v.array(v.string()),
+  illustrationPrompt: v.string(),
+  videoMotionPrompt: v.string(),
+};
+
+export const applyExtraction = internalMutation({
+  args: {
+    chapterId: v.id("chapters"),
+    ...extractionFields,
+  },
+  handler: async (ctx, args) => {
+    if (args.summaryBullets.length !== 3) {
+      throw new Error("extraction must return exactly 3 summary bullets");
+    }
+
+    const chapter = await ctx.db.get(args.chapterId);
+    if (!chapter) throw new Error("chapter not found");
+    const story = await ctx.db.get(chapter.storyId);
+    if (!story) throw new Error("story not found");
+
+    const used = new Set(args.itemsUsed);
+    const known = new Set(story.items.map((item) => item.id));
+    const items = story.items.map((item) =>
+      used.has(item.id)
+        ? { ...item, status: "USED" as const, usedInChapter: chapter.index }
+        : item,
+    );
+    for (const item of args.newItems) {
+      // A new id that collides with something already in the story is the
+      // model repeating an item, not picking up a second one.
+      if (known.has(item.id)) continue;
+      known.add(item.id);
+      items.push({ id: item.id, name: item.name, status: "IN_BACKPACK" });
+    }
+
+    await ctx.db.patch(args.chapterId, {
+      title: args.chapterTitle,
+      summaryBullets: args.summaryBullets,
+      illustrationPrompt: args.illustrationPrompt,
+      videoMotionPrompt: args.videoMotionPrompt,
+      extractionStatus: "DONE",
+    });
+
+    await ctx.db.patch(story._id, {
+      items,
+      // Replaced, not appended: the extractor reports every open thread.
+      worldState: {
+        ...story.worldState,
+        unresolvedThreads: args.unresolvedThreads,
+      },
+    });
+  },
+});
+
+/**
+ * Runs during REVIEWING, after the prose is stored. Scheduled rather than
+ * awaited by `writeChapter`, so a provider failure cannot take the chapter the
+ * child is reading with it.
+ */
+export const extractChapter = internalAction({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }): Promise<void> => {
+    const { story, chapter, characters } = await ctx.runQuery(
+      internal.chapters.getChapterContext,
+      { chapterId },
+    );
+    if (chapter.extractionStatus === "DONE") return;
+
+    await ctx.runMutation(internal.chapters.beginExtraction, { chapterId });
+
+    try {
+      const prompt = extractionPrompt({
+        chapterIndex: chapter.index,
+        chapterParagraphs: chapter.paragraphs,
+        characters: characters.map((character) => ({
+          name: character.name,
+          visualDescription: character.visualDescription,
+        })),
+        artStyle: story.artStyle,
+        availableItems: story.items
+          .filter((item) => item.status === "IN_BACKPACK")
+          .map((item) => ({ id: item.id, name: item.name })),
+      });
+
+      const raw = await getTextProvider("structured").complete({
+        ...prompt,
+        jsonSchema: EXTRACTION_SCHEMA,
+        maxTokens: 1200,
+      });
+
+      const extraction = parseExtraction(
+        raw,
+        new Set(story.items.map((item) => item.id)),
+      );
+
+      await ctx.runMutation(internal.chapters.applyExtraction, {
+        chapterId,
+        ...extraction,
+      });
+    } catch (cause) {
+      await ctx.runMutation(internal.chapters.failExtraction, { chapterId });
+      throw cause;
+    }
   },
 });
