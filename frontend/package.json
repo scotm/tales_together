@@ -52,7 +52,11 @@
     "preset": "jest-expo",
     "testMatch": [
       "<rootDir>/src/**/*.test.tsx"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@convex/(.*)$": "<rootDir>/convex/$1",
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
   },
   "private": true
 }

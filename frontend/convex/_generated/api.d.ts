@@ -18,6 +18,7 @@ import type * as llm_moderation from "../llm/moderation.js";
 import type * as llm_openai from "../llm/openai.js";
 import type * as llm_promptMatrices from "../llm/promptMatrices.js";
 import type * as llm_prompts from "../llm/prompts.js";
+import type * as llm_proseLint from "../llm/proseLint.js";
 import type * as llm_provider from "../llm/provider.js";
 import type * as stories from "../stories.js";
 
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   "llm/openai": typeof llm_openai;
   "llm/promptMatrices": typeof llm_promptMatrices;
   "llm/prompts": typeof llm_prompts;
+  "llm/proseLint": typeof llm_proseLint;
   "llm/provider": typeof llm_provider;
   stories: typeof stories;
 }>;

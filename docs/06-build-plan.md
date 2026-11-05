@@ -12,13 +12,14 @@ the code in those sections is reference, not a spec to copy line by line.
 - If a slice picks a vendor or discovers an API sharp edge, add a `decisions.md` entry in the same PR.
 - Vendor calls sit behind one interface with a fake implementation, so CI never needs an API key.
 
-## Where the code is today (2026-10-30)
+## Where the code is today (2026-11-05)
 
 | Have | Missing |
 | :--- | :--- |
-| `convex/schema.ts` (3 tables), `stories.create` / `get` / `listRecent`, 2 Vitest cases | No LLM, no prompts, no images, no EPUB |
-| Expo routes: home (one hardcoded `SAMPLE`) and a story screen that lists chapter statuses | No real setup UI, no reading view, no download |
-| Test runners wired: `jest-expo` + `convex-test` | Convex backend down locally; no provider keys |
+| `convex/schema.ts` (3 tables), `stories.create` / `get` / `listRecent`, `catalog.ts` | Nothing writes chapters 2–5 yet |
+| `llm/` adapter (Gemini + local oMLX), Prompt 2, Prompt 3, prose lint, `pitchChapter`, `chooseBeat`, `writeChapter` | No extraction, no illustrations, no EPUB |
+| Expo home + story screen: deal cards, pick one, write, read paragraphs | Setup UI still uses hardcoded values; no download |
+| Test runners: `jest-expo` (1 UI test) + `convex-test` (26 Vitest cases) | No real prose verified against a hosted model |
 
 ## Slices
 

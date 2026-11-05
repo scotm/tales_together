@@ -1,6 +1,6 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
@@ -19,8 +19,11 @@ export default function StoryScreen() {
     storyId: storyId as Id<"stories">,
   });
   const pitchChapter = useAction(api.chapters.pitchChapter);
+  const writeChapter = useAction(api.chapters.writeChapter);
+  const chooseBeat = useMutation(api.chapters.chooseBeat);
 
   const [pitching, setPitching] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (story === undefined) {
@@ -53,6 +56,31 @@ export default function StoryScreen() {
       );
     } finally {
       setPitching(false);
+    }
+  }
+
+  async function pick(cardId: string) {
+    if (!chapter) return;
+    setError(null);
+    try {
+      await chooseBeat({ chapterId: chapter._id, cardId });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not pick");
+    }
+  }
+
+  async function write() {
+    if (!chapter) return;
+    setWriting(true);
+    setError(null);
+    try {
+      await writeChapter({ chapterId: chapter._id });
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not write the chapter",
+      );
+    } finally {
+      setWriting(false);
     }
   }
 
@@ -89,7 +117,20 @@ export default function StoryScreen() {
             ) : null}
 
             {chapter.beatCards.map((card) => (
-              <View key={card.cardId} style={styles.card}>
+              <Pressable
+                key={card.cardId}
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: chapter.chosenBeat?.cardId === card.cardId,
+                }}
+                onPress={() => pick(card.cardId)}
+                disabled={writing || chapter.paragraphs.length > 0}
+                style={[
+                  styles.card,
+                  chapter.chosenBeat?.cardId === card.cardId &&
+                    styles.cardPicked,
+                ]}
+              >
                 <Text style={styles.cardTitle}>
                   {card.iconEmoji} {card.title}
                 </Text>
@@ -97,7 +138,37 @@ export default function StoryScreen() {
                 {card.suggestedItemId ? (
                   <Text style={styles.badge}>🎒 {card.suggestedItemId}</Text>
                 ) : null}
-              </View>
+              </Pressable>
+            ))}
+
+            {chapter.chosenBeat && chapter.paragraphs.length === 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={write}
+                disabled={writing}
+                style={({ pressed }) => [
+                  styles.button,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.buttonLabel}>
+                  {writing ? "Writing..." : "🪄 Write Chapter!"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {chapter && chapter.paragraphs.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {chapter.title ?? `Chapter ${chapter.index}`}
+            </Text>
+            {chapter.paragraphs.map((paragraph, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: append-only list
+              <Text key={`${chapter._id}-${index}`} style={styles.paragraph}>
+                {paragraph}
+              </Text>
             ))}
           </View>
         ) : null}
@@ -134,6 +205,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 4,
   },
+  cardPicked: { borderColor: "#F59E0B", backgroundColor: "#FFFBEB" },
   cardTitle: { fontSize: 17, fontWeight: "700", color: "#1F1A17" },
   cardPitch: { fontSize: 15, color: "#44403C" },
   badge: { fontSize: 13, color: "#92400E" },
@@ -147,5 +219,6 @@ const styles = StyleSheet.create({
   },
   buttonPressed: { transform: [{ translateY: 4 }], borderBottomWidth: 2 },
   buttonLabel: { fontSize: 17, fontWeight: "700", color: "#1F1A17" },
+  paragraph: { fontSize: 18, lineHeight: 28, color: "#292524" },
   error: { color: "#B91C1C" },
 });

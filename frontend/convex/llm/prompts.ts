@@ -1,5 +1,6 @@
 import { READING_LEVEL } from "../lib/config";
 import type { ArcRole } from "./promptMatrices";
+import { BANNED_PHRASES } from "./proseLint";
 
 export interface ReadingLevelRules {
   label: string;
@@ -110,6 +111,123 @@ ${storySoFar}
 </story_so_far>
 
 Generate recapOneLiner ("Previously on...") and the 3 cards for Chapter ${input.chapterIndex}.
+`.trim();
+
+  return { system, user };
+}
+
+/** Injected into every prose prompt. Ported from docs/03 §3. */
+export const GLOBAL_WRITING_RULES = `
+<global_writing_rules>
+1. BANNED AI CLICHÉS: Never use the words/phrases ${BANNED_PHRASES.map((phrase) => `"${phrase}"`).join(", ")}.
+2. NO MORALISING LECTURES: Never end a chapter with a summary paragraph explaining the moral of the story (e.g., "And so Barnaby learned that teamwork makes the dream work"). Let the actions and humour speak for themselves.
+3. RESPECT THE PACING LOCK: You are writing ONE chapter of a multi-chapter book. Only write the events of the current chapter beat. Never fast-forward to the end of the book unless isFinalChapter is true.
+4. KID-SAFE PIVOTING: Keep all content 100% safe for children. Slapstick, gross-out humour (burps, mud, smelly cheese, silly monsters), and mild spooky tension are encouraged if they fit the vibe, but zero real violence, cruelty, or frightening trauma.
+</global_writing_rules>
+`.trim();
+
+export interface ChapterProseInput {
+  storyTitle: string;
+  chapterIndex: number;
+  totalChapters: number;
+  arc: ArcRole;
+  setting: string;
+  vibe: string;
+  characters: PitchCharacter[];
+  availableItems: PitchItem[];
+  unresolvedThreads: string[];
+  priorChapters: { index: number; summaryBullets: string[] }[];
+  /** Verbatim last two paragraphs of chapter N-1. */
+  previousChapterTail?: string;
+  chosenBeat: { title: string; kidFriendlyPitch: string };
+  useItemName?: string;
+  endingStyle: "CLIFFHANGER" | "COZY_PAUSE";
+}
+
+/** Prompt 3, docs/03 §6. Returns the two parts the provider needs. */
+export function chapterProsePrompt(input: ChapterProseInput): {
+  system: string;
+  user: string;
+} {
+  const level = READING_LEVEL_MATRIX[READING_LEVEL];
+
+  const cast = input.characters
+    .map(
+      (character) =>
+        `- ${character.name} (${character.role}): ${character.visualDescription}. ` +
+        `Quirk: ${character.quirk}.`,
+    )
+    .join("\n");
+
+  const summarySoFar = input.priorChapters
+    .map(
+      (chapter) =>
+        `Chapter ${chapter.index}: ${chapter.summaryBullets.join(" ")}`,
+    )
+    .join("\n");
+
+  const continuity = input.previousChapterTail
+    ? `
+<seamless_continuity_anchor>
+Here are the exact final two paragraphs of Chapter ${input.chapterIndex - 1}. Pick up the scene and momentum seamlessly from this exact moment without repeating it:
+"""
+${input.previousChapterTail}
+"""
+</seamless_continuity_anchor>
+`
+    : "";
+
+  const orders = [
+    `- **Chosen Plot Beat:** ${input.chosenBeat.title} — ${input.chosenBeat.kidFriendlyPitch}`,
+    input.useItemName
+      ? `- **MANDATORY BACKPACK ITEM:** The characters MUST actively use the **${input.useItemName}** from their backpack at a key moment in this chapter!`
+      : "",
+    input.endingStyle === "CLIFFHANGER" &&
+    input.chapterIndex < input.totalChapters
+      ? `- **CHAPTER ENDING:** End the final paragraph on an exciting mini-cliffhanger or surprise discovery that leads into Chapter ${input.chapterIndex + 1}!`
+      : "- **CHAPTER ENDING:** End this chapter on a warm, safe, or funny beat where the characters catch their breath.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const system = `
+You are an award-winning children's book author writing **Chapter ${input.chapterIndex} of ${input.totalChapters}** for the book "${input.storyTitle}".
+
+${GLOBAL_WRITING_RULES}
+
+<reading_level_constraints>
+Target Audience: ${level.label}
+Target Length: ${level.wordCountTarget} (${level.paragraphCount})
+Linguistic Rules:
+${level.linguisticRules}
+</reading_level_constraints>
+
+<narrative_arc_mandate>
+Chapter ${input.chapterIndex} Role: ${input.arc.role}
+${input.arc.instructions}
+</narrative_arc_mandate>
+`.trim();
+
+  const user = `
+<world_and_cast>
+Setting: ${input.setting}
+Vibe: ${input.vibe}
+Characters:
+${cast}
+Current Backpack Inventory: ${JSON.stringify(input.availableItems)}
+Unresolved Plot Threads: ${input.unresolvedThreads.join("; ")}
+</world_and_cast>
+
+<story_summary_so_far>
+${summarySoFar || "(This is the first chapter.)"}
+</story_summary_so_far>
+${continuity}
+<child_director_orders>
+The child Director has chosen the following outline for Chapter ${input.chapterIndex}. You MUST honour every single one of these choices:
+${orders}
+</child_director_orders>
+
+Write the chapter prose now. Separate each paragraph with a double newline. Do not include a chapter heading or commentary—output only the story paragraphs.
 `.trim();
 
   return { system, user };
