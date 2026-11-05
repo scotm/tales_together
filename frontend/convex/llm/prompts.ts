@@ -121,7 +121,7 @@ export const GLOBAL_WRITING_RULES = `
 <global_writing_rules>
 1. BANNED AI CLICHÉS: Never use the words/phrases ${BANNED_PHRASES.map((phrase) => `"${phrase}"`).join(", ")}.
 2. NO MORALISING LECTURES: Never end a chapter with a summary paragraph explaining the moral of the story (e.g., "And so Barnaby learned that teamwork makes the dream work"). Let the actions and humour speak for themselves.
-3. RESPECT THE PACING LOCK: You are writing ONE chapter of a multi-chapter book. Only write the events of the current chapter beat. Never fast-forward to the end of the book unless isFinalChapter is true.
+3. RESPECT THE PACING LOCK: You are writing ONE chapter of a multi-chapter book. Only write the events of the current chapter beat. Never fast-forward to the end of the book, and never resolve the central problem early — the chapter's arc role below decides how far you may go.
 4. KID-SAFE PIVOTING: Keep all content 100% safe for children. Slapstick, gross-out humour (burps, mud, smelly cheese, silly monsters), and mild spooky tension are encouraged if they fit the vibe, but zero real violence, cruelty, or frightening trauma.
 </global_writing_rules>
 `.trim();
@@ -205,6 +205,7 @@ ${level.linguisticRules}
 <narrative_arc_mandate>
 Chapter ${input.chapterIndex} Role: ${input.arc.role}
 ${input.arc.instructions}
+This is ${input.chapterIndex === input.totalChapters ? "the FINAL" : "NOT the final"} chapter.
 </narrative_arc_mandate>
 `.trim();
 

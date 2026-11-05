@@ -13,13 +13,14 @@ export const DEFAULT_ART_STYLE =
 export const BOOK_BUDGET_USD = 0.5;
 export const BOOK_IMAGE_CAP = 6;
 
-// Latest Gemini Flash pair (verified 2026-11-05):
-//   prose/cards  — gemini-3.8-flash, GA 2026-09-02
-//   structured   — gemini-3.5-flash-lite, GA 2026-07-21
-// Pin the version, never `gemini-flash-latest`: an alias that moves mid-book
-// would change the narrator's voice between chapters.
+// Both purposes default to Gemini 3.5 Flash-Lite (GA 2026-07-21). Prose moved
+// off gemini-3.8-flash on 2026-11-05: its thinking tokens ate the output cap
+// (1533 of 1600, 45 words returned) and it cost more for prose the child could
+// not tell apart. See decisions.md. Raise GEMINI_PROSE_MODEL for a fancier
+// book, but pin the version — an alias that moves mid-book would change the
+// narrator's voice between chapters.
 export const GEMINI_PROSE_MODEL =
-  process.env.GEMINI_PROSE_MODEL ?? "gemini-3.8-flash";
+  process.env.GEMINI_PROSE_MODEL ?? "gemini-3.5-flash-lite";
 export const GEMINI_FAST_MODEL =
   process.env.GEMINI_FAST_MODEL ?? "gemini-3.5-flash-lite";
 

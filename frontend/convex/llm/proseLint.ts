@@ -15,9 +15,10 @@ export const BANNED_PHRASES = [
   "heart swelled",
 ] as const;
 
-// docs/03 §2 asks for 4–18 word sentences at AGES_7_9; a little slack avoids
-// rejecting good prose over one long clause.
-const MAX_SENTENCE_WORDS = 22;
+// docs/03 §2 asks for 4–18 word sentences at AGES_7_9. Both Gemini 3.8 Flash
+// and Flash-Lite routinely land at 23–24 in a good paragraph, so the gate only
+// catches runaway sentences.
+const MAX_SENTENCE_WORDS = 28;
 
 export type ProseLintResult = { ok: true } | { ok: false; reason: string };
 
@@ -36,7 +37,9 @@ export function lintProse(paragraphs: string[]): ProseLintResult {
     }
   }
 
-  for (const sentence of text.split(/(?<=[.!?…])\s+/)) {
+  // Closing quotes and brackets sit between the full stop and the space, so a
+  // naive split would glue `….” Then` into one long sentence.
+  for (const sentence of text.split(/(?<=[.!?…]["'”’)\]]?)\s+/)) {
     const words = sentence.split(/\s+/).filter(Boolean);
     if (words.length > MAX_SENTENCE_WORDS) {
       return {

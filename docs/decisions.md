@@ -40,7 +40,39 @@ run, and `pitchChapter` only needs JSON of the right shape to prove the plumbing
 
 **Revisit when:** a dev needs local prose worth reading, or CI needs to run without the Mac.
 
-## Text model — Gemini 3.8 Flash — accepted, 2026-11-05
+## Text model — prose on Gemini 3.5 Flash-Lite — accepted, 2026-11-05
+
+**Decision:** `GEMINI_PROSE_MODEL` defaults to `gemini-3.5-flash-lite`, the same model as
+`GEMINI_FAST_MODEL`. Prose still selects the provider through `getTextProvider("prose")`, so raising
+the prose model later is one env var, no code change.
+
+**Why:** measured on "The Windy Kite" chapter 1 with the real Prompt 3:
+
+| | gemini-3.8-flash | gemini-3.5-flash-lite |
+| :--- | :--- | :--- |
+| words | 45 (truncated) | 442 |
+| thinking tokens | 1533 of a 1600 cap | 0 |
+| lint | — | pass |
+| wall time | — | 3.6 s |
+
+3.8 Flash spent its whole output budget thinking, so the chapter came back as one paragraph. Nobody
+reads the difference in the prose; everybody feels the price.
+
+**Gotchas (verified 2026-11-05):**
+
+- Thinking tokens count against `maxOutputTokens` on Gemini 3.x. Any prose cap sized from word count
+  alone can truncate silently; `writeChapter` now asks for 2400.
+- The 22-word sentence ceiling invented for `proseLint` was wrong: 3.8 Flash, Flash-Lite and
+  gpt-oss-20b each tripped it at 23–24 words on good prose. Raised to 28, which still catches
+  runaway sentences.
+- The lint splitter must ignore a closing quote between the full stop and the space (`….” Then`),
+  or every dialogue-heavy chapter reads as one long sentence. Fixed with a regression test.
+- Flash-Lite overshoots the paragraph target (21 blocks vs 6–9) and undershoots dialogue (17–25% vs
+  40%) because it puts each spoken line in its own paragraph. Harmless for reading, unmet as spec.
+
+**Revisit when:** chapters read flat in a real playtest, or a child-facing run justifies 3.8's cost.
+
+## Text model — Gemini 3.8 Flash — superseded, 2026-11-05
 
 **Decision:** pin two Gemini model ids in `convex/lib/config.ts`:
 

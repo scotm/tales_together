@@ -280,9 +280,11 @@ export const writeChapter = action({
       endingStyle: "CLIFFHANGER",
     });
 
+    // On Gemini 3.x thinking tokens are charged against this budget, so a cap
+    // sized for the prose alone can return a truncated chapter.
     const raw = await getTextProvider("prose").complete({
       ...prompt,
-      maxTokens: 1600,
+      maxTokens: 2400,
     });
     const paragraphs = splitParagraphs(raw);
 

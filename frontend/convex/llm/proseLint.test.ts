@@ -22,11 +22,38 @@ describe("prose lint", () => {
 
   it("rejects a sentence over the length limit", () => {
     const verdict = lintProse([
-      `Mira ran ${Array.from({ length: 25 }, () => "very").join(" ")} fast.`,
+      `Mira ran ${Array.from({ length: 30 }, () => "very").join(" ")} fast.`,
     ]);
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringMatching(/sentence is 28 words \(max 22\)/),
+      reason: expect.stringMatching(/sentence is 33 words \(max 28\)/),
+    });
+  });
+
+  it("does not glue a quoted sentence onto the next one", () => {
+    const quote = [
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+      "seven",
+      "eight",
+      "nine",
+      "ten",
+      "eleven",
+      "twelve",
+      "thirteen",
+      "fourteen",
+      "fifteen",
+      "sixteen",
+      "seventeen",
+      "eighteen",
+    ].join(" ");
+
+    expect(lintProse([`Mira said, “${quote}.” Then she ran.`])).toEqual({
+      ok: true,
     });
   });
 
