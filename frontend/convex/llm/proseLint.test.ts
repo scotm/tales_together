@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GLOBAL_WRITING_RULES } from "./prompts";
-import { BANNED_PHRASES, lintProse } from "./proseLint";
+import { BANNED_PHRASES, countWords, lintProse } from "./proseLint";
 
 describe("prose lint", () => {
   it("passes prose a seven-year-old can read", () => {
@@ -55,6 +55,11 @@ describe("prose lint", () => {
     expect(lintProse([`Mira said, “${quote}.” Then she ran.`])).toEqual({
       ok: true,
     });
+  });
+
+  it("counts words across paragraphs, ignoring punctuation-only tokens", () => {
+    expect(countWords(["Mira ran.", "The kite — flew!"])).toBe(5);
+    expect(countWords([])).toBe(0);
   });
 
   it("keeps the prompt and the lint on the same banned list", () => {

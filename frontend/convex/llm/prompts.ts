@@ -198,6 +198,7 @@ ${GLOBAL_WRITING_RULES}
 <reading_level_constraints>
 Target Audience: ${level.label}
 Target Length: ${level.wordCountTarget} (${level.paragraphCount})
+A chapter shorter than that range is a failure. Reach it with sensory detail and dialogue, not by padding.
 Linguistic Rules:
 ${level.linguisticRules}
 </reading_level_constraints>

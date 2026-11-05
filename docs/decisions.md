@@ -40,6 +40,33 @@ run, and `pitchChapter` only needs JSON of the right shape to prove the plumbing
 
 **Revisit when:** a dev needs local prose worth reading, or CI needs to run without the Mac.
 
+## Illustrations — Gemini 3.1 Flash Image — accepted, 2026-11-05
+
+**Decision:** one image provider, prompt-only, model pinned in `convex/lib/config.ts` as
+`GEMINI_IMAGE_MODEL = gemini-3.1-flash-image`. Chapters get one still each; the story gets a cover
+when chapter 5 locks. Both are scheduled background work off the extraction/lock path, and both use
+the same key as the text models.
+
+**Why:** the key already exists, so there is no second vendor, bill or SDK; a live 4:3 image came
+back in ~5 s at 1200×896, ~1.1 MB JPEG, matching the extractor's prompt with no text in frame.
+
+**Gotchas (verified 2026-11-05 on a full five-chapter book):**
+
+- Request shape is `generateContent` with `generationConfig.imageConfig.aspectRatio`; the image
+  arrives base64 in `inlineData`. `responseModalities` is not needed and was ignored when sent.
+- Convex's V8 runtime is not guaranteed to expose `atob`/`Buffer`, so `decodeBase64` is local, with a
+  unit test. Storing needs a `Uint8Array<ArrayBuffer>`, not `Uint8Array<ArrayBufferLike>`.
+- Character drift is visible in colour details: red boots on the cover, yellow boots in chapter 5,
+  same raincoat and hair. Prompt-only art holds identity better than expected but not exactly. That
+  was the condition for adding reference images later; it is now the first candidate.
+- The cover prompt uses the protagonist's `visualDescription`, never their name — the model has no
+  memory of who "Mira" is.
+- Each illustration is ~10 s wall clock through the CLI (action itself ~5 s), so a five-chapter book
+  spends roughly a minute on art after the text is already readable.
+
+**Revisit when:** drift is visible to a child (references, or one art pass with a seed), or image
+spend per book needs to count against `BOOK_BUDGET_USD`.
+
 ## Five-chapter loop — accepted, 2026-11-05
 
 **Decision:** `chapters.lockChapter` is the only transition that advances the book. It refuses a
@@ -55,11 +82,17 @@ the next cards hides a model call behind reading time.
 - Scheduled functions must be internal. `pitchChapter` stays public for the client, so the scheduler
   calls a `pitchNextChapter` internal alias over the same body; a public action is not schedulable.
 - Word counts across a real book: 442, 274, 384, 294, 390. Only chapter 1 met the 400–550 matrix
-  target; the lint checks read quality, not length, so nothing rejects a short chapter.
+  target; the lint checks read quality, not length, so nothing rejected a short chapter.
+- Fix in place: the prose prompt now says out loud that a chapter under the range is a failure, and
+  `writeChapter` spends exactly one corrective call when the result lands under
+  `PROSE_MIN_WORDS = 360`. It keeps the longer of the two if the retry is also short, and never
+  blocks the reader. First chapter after the change: 429 words, no retry needed.
 - Chapter titles come from extraction, so the reader shows "Chapter 3" until extraction lands.
+- Locked chapters stay reachable through the chapter list on the story screen; without it a child
+  loses chapter N the moment chapter N+1 becomes active.
 
-**Revisit when:** short chapters reach a reader (prompt nudge or a soft length gate), or a locked
-chapter's prose needs to be readable again (today the screen only shows the active chapter).
+**Revisit when:** the single retry is not enough to lift a stubbornly short chapter, or a story grows
+past five chapters and per-chapter spend needs a real ledger.
 
 ## Chapter extraction — accepted, 2026-11-05
 

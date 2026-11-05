@@ -9,6 +9,7 @@ import {
   internalQuery,
   mutation,
 } from "./_generated/server";
+import { PROSE_MIN_WORDS } from "./lib/config";
 import { type ParsedBeatCard, parseBeatPitch } from "./llm/beatCards";
 import { parseExtraction } from "./llm/extraction";
 import { BEAT_PITCH_SCHEMA, EXTRACTION_SCHEMA } from "./llm/jsonSchemas";
@@ -19,7 +20,7 @@ import {
   chapterProsePrompt,
   extractionPrompt,
 } from "./llm/prompts";
-import { lintProse } from "./llm/proseLint";
+import { countWords, lintProse } from "./llm/proseLint";
 import { getTextProvider } from "./llm/provider";
 import { beatStyle } from "./schema";
 
@@ -303,11 +304,30 @@ export const writeChapter = action({
 
     // On Gemini 3.x thinking tokens are charged against this budget, so a cap
     // sized for the prose alone can return a truncated chapter.
-    const raw = await getTextProvider("prose").complete({
-      ...prompt,
-      maxTokens: 2400,
-    });
-    const paragraphs = splitParagraphs(raw);
+    const provider = getTextProvider("prose");
+    const raw = await provider.complete({ ...prompt, maxTokens: 2400 });
+    let paragraphs = splitParagraphs(raw);
+    let lint = lintProse(paragraphs);
+
+    // One corrective call, never a loop and never a block: a short chapter is
+    // better than an error screen, but it should not go unnoticed either.
+    if (lint.ok && countWords(paragraphs) < PROSE_MIN_WORDS) {
+      const retry = await provider.complete({
+        system: prompt.system,
+        user:
+          `${prompt.user}\n\nYour previous attempt was ` +
+          `${countWords(paragraphs)} words. Rewrite the chapter inside the ` +
+          `target range. Keep the same events and ending; add dialogue and ` +
+          `sensory detail, not new plot.`,
+        maxTokens: 2400,
+      });
+      const retried = splitParagraphs(retry);
+      const retriedLint = lintProse(retried);
+      if (retriedLint.ok && countWords(retried) > countWords(paragraphs)) {
+        paragraphs = retried;
+        lint = retriedLint;
+      }
+    }
 
     const verdict = await moderate(paragraphs.join("\n\n"));
     if (!verdict.ok) {
@@ -315,7 +335,6 @@ export const writeChapter = action({
       throw new Error(`moderation rejected the chapter: ${verdict.reason}`);
     }
 
-    const lint = lintProse(paragraphs);
     if (!lint.ok) {
       await ctx.runMutation(internal.chapters.abandonWriting, { chapterId });
       throw new Error(`prose lint rejected the chapter: ${lint.reason}`);
@@ -333,6 +352,13 @@ export const writeChapter = action({
       chapterId,
     });
     return paragraphs;
+  },
+});
+
+export const setIllustration = internalMutation({
+  args: { chapterId: v.id("chapters"), fileId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.chapterId, { illustrationFileId: args.fileId });
   },
 });
 
@@ -467,7 +493,11 @@ export const extractChapter = internalAction({
         ...extraction,
       });
 
-      // Have the next chapter's cards ready before the child taps "Next".
+      // Art and the next chapter's cards are background work from here on.
+      await ctx.scheduler.runAfter(0, internal.media.illustrateChapter, {
+        chapterId,
+      });
+
       if (next && next.beatCards.length === 0) {
         await ctx.scheduler.runAfter(0, internal.chapters.pitchNextChapter, {
           chapterId: next._id,
@@ -503,6 +533,12 @@ export const lockChapter = mutation({
       status:
         chapter.index === story.totalChapters ? "COMPLETED" : "IN_PROGRESS",
     });
+
+    if (chapter.index === story.totalChapters) {
+      await ctx.scheduler.runAfter(0, internal.media.illustrateCover, {
+        storyId: story._id,
+      });
+    }
 
     // The EPUB needs the extraction even if it failed while the child read on.
     if (chapter.extractionStatus !== "DONE") {

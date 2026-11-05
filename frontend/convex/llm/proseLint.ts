@@ -51,3 +51,10 @@ export function lintProse(paragraphs: string[]): ProseLintResult {
 
   return { ok: true };
 }
+
+export function countWords(paragraphs: string[]): number {
+  return paragraphs
+    .join(" ")
+    .split(/\s+/)
+    .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+}

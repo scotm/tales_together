@@ -17,9 +17,9 @@ the code in those sections is reference, not a spec to copy line by line.
 | Have | Missing |
 | :--- | :--- |
 | `convex/schema.ts` (3 tables), `stories.create` / `get` / `listRecent`, `catalog.ts` | Nothing writes chapters 2–5 yet |
-| `llm/` adapter (Gemini + local oMLX), Prompts 2–4, prose lint, full chapter loop: `pitchChapter`, `chooseBeat`, `writeChapter`, background `extractChapter`, `lockChapter`; story reaches `COMPLETED` | No illustrations, no EPUB, no reader for locked chapters |
+| `llm/` adapter (Gemini + local oMLX), Prompts 2–4, prose lint, full chapter loop, background extraction, `media.ts` illustrations + cover | No EPUB, no video, no re-illustration path |
 | Expo home + story screen: deal cards, pick one, write, read paragraphs (chapter title now comes back from extraction) | Setup UI still uses hardcoded values; no download |
-| Test runners: `jest-expo` (1 UI test) + `convex-test` (39 Vitest cases) | Chapters average 357 words vs a 400 target; no eval harness |
+| Test runners: `jest-expo` (2 UI tests) + `convex-test` (46 Vitest cases) | Chapters average 357 words vs a 400 target; no eval harness |
 
 ## Slices
 

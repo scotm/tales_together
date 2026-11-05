@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { BACKPACK_SIZE, CONVEYOR_ITEMS } from "./catalog";
 import {
   CHAPTER_COUNT,
@@ -106,7 +111,49 @@ export const get = query({
       .withIndex("by_story", (q) => q.eq("storyId", args.storyId))
       .collect();
 
-    return { story, chapters, characters };
+    return {
+      story: {
+        ...story,
+        coverUrl: story.coverFileId
+          ? await ctx.storage.getUrl(story.coverFileId)
+          : null,
+      },
+      chapters: await Promise.all(
+        chapters.map(async (chapter) => ({
+          ...chapter,
+          illustrationUrl: chapter.illustrationFileId
+            ? await ctx.storage.getUrl(chapter.illustrationFileId)
+            : null,
+        })),
+      ),
+      characters,
+    };
+  },
+});
+
+/** The cover prompt wants the hero's canonical description, not a name. */
+export const getForCover = internalQuery({
+  args: { storyId: v.id("stories") },
+  handler: async (ctx, { storyId }) => {
+    const story = await ctx.db.get(storyId);
+    if (!story) return null;
+
+    const characters = await ctx.db
+      .query("characters")
+      .withIndex("by_story", (q) => q.eq("storyId", storyId))
+      .collect();
+    const hero = characters.find(
+      (character) => character.role === "PROTAGONIST",
+    );
+
+    return { ...story, heroVisualDescription: hero?.visualDescription };
+  },
+});
+
+export const setCover = internalMutation({
+  args: { storyId: v.id("stories"), fileId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.storyId, { coverFileId: args.fileId });
   },
 });
 

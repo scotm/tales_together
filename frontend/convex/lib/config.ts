@@ -31,3 +31,12 @@ export const GEMINI_FAST_MODEL =
 export const LOCAL_LLM_URL = process.env.LOCAL_LLM_URL;
 export const LOCAL_LLM_MODEL =
   process.env.LOCAL_LLM_MODEL ?? "gemma-4-e4b-it-4bit";
+
+// Flash-Lite treats "400 to 550 words" as advice: a five-chapter run came in
+// at 274–442. Below this floor `writeChapter` spends one corrective call before
+// accepting the result; it never blocks the reader.
+export const PROSE_MIN_WORDS = 360;
+
+// Illustration model (verified 2026-11-05): 4:3, ~1.2 MB JPEG, ~5 s a chapter.
+export const GEMINI_IMAGE_MODEL =
+  process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image";

@@ -14,6 +14,7 @@ import type * as lib_config from "../lib/config.js";
 import type * as llm_beatCards from "../llm/beatCards.js";
 import type * as llm_extraction from "../llm/extraction.js";
 import type * as llm_gemini from "../llm/gemini.js";
+import type * as llm_image from "../llm/image.js";
 import type * as llm_jsonReply from "../llm/jsonReply.js";
 import type * as llm_jsonSchemas from "../llm/jsonSchemas.js";
 import type * as llm_moderation from "../llm/moderation.js";
@@ -22,6 +23,7 @@ import type * as llm_promptMatrices from "../llm/promptMatrices.js";
 import type * as llm_prompts from "../llm/prompts.js";
 import type * as llm_proseLint from "../llm/proseLint.js";
 import type * as llm_provider from "../llm/provider.js";
+import type * as media from "../media.js";
 import type * as stories from "../stories.js";
 
 import type {
@@ -37,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   "llm/beatCards": typeof llm_beatCards;
   "llm/extraction": typeof llm_extraction;
   "llm/gemini": typeof llm_gemini;
+  "llm/image": typeof llm_image;
   "llm/jsonReply": typeof llm_jsonReply;
   "llm/jsonSchemas": typeof llm_jsonSchemas;
   "llm/moderation": typeof llm_moderation;
@@ -45,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   "llm/prompts": typeof llm_prompts;
   "llm/proseLint": typeof llm_proseLint;
   "llm/provider": typeof llm_provider;
+  media: typeof media;
   stories: typeof stories;
 }>;
 

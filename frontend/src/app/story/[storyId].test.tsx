@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 import type { Id } from "@convex/_generated/dataModel";
-import { render } from "@testing-library/react-native";
+import { fireEvent, render } from "@testing-library/react-native";
 import { useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
 import StoryScreen from "./[storyId]";
@@ -96,4 +96,36 @@ it("reads back the prose, then offers to write once a card is picked", async () 
   });
   await view.rerender(<StoryScreen />);
   expect(view.queryByText("🪄 Write Chapter!")).toBeNull();
+});
+
+it("reopens a finished chapter from the list", async () => {
+  const finished = {
+    ...chapter,
+    _id: "chapter_one" as Id<"chapters">,
+    index: 1,
+    status: "LOCKED" as const,
+    title: "The Kite Chase",
+    paragraphs: ["Chapter one words."],
+  };
+  const current = {
+    ...chapter,
+    _id: "chapter_two" as Id<"chapters">,
+    index: 2,
+    status: "REVIEWING" as const,
+    title: "The Bathtub",
+    paragraphs: ["Chapter two words."],
+  };
+
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue({
+    ...story,
+    chapters: [finished, current],
+  });
+
+  const view = await render(<StoryScreen />);
+  expect(view.getByText("Chapter two words.")).toBeTruthy();
+  expect(view.queryByText("Chapter one words.")).toBeNull();
+
+  await fireEvent.press(view.getByText("1 · The Kite Chase"));
+  expect(view.getByText("Chapter one words.")).toBeTruthy();
 });

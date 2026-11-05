@@ -5,6 +5,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -26,6 +27,7 @@ export default function StoryScreen() {
   const [pitching, setPitching] = useState(false);
   const [writing, setWriting] = useState(false);
   const [locking, setLocking] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (story === undefined) {
@@ -45,9 +47,12 @@ export default function StoryScreen() {
   }
 
   const allLocked = story.chapters.every((entry) => entry.status === "LOCKED");
-  const chapter =
+  const activeChapter =
     story.chapters.find((entry) => entry.status !== "LOCKED") ??
     story.chapters[story.chapters.length - 1];
+  // A finished chapter can be reopened from the list without leaving the story.
+  const chapter =
+    story.chapters.find((entry) => entry._id === openId) ?? activeChapter;
 
   async function deal() {
     if (!chapter) return;
@@ -107,6 +112,13 @@ export default function StoryScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
+        {story.story.coverUrl ? (
+          <Image
+            accessibilityLabel="Book cover"
+            source={{ uri: story.story.coverUrl }}
+            style={styles.cover}
+          />
+        ) : null}
         <Text style={styles.title}>{story.story.title}</Text>
         <Text style={styles.muted}>{story.story.worldState.setting}</Text>
 
@@ -181,6 +193,14 @@ export default function StoryScreen() {
           </View>
         ) : null}
 
+        {chapter?.illustrationUrl ? (
+          <Image
+            accessibilityLabel={`Illustration for chapter ${chapter.index}`}
+            source={{ uri: chapter.illustrationUrl }}
+            style={styles.illustration}
+          />
+        ) : null}
+
         {chapter && chapter.paragraphs.length > 0 ? (
           <View style={styles.section}>
             {chapter.paragraphs.map((paragraph, index) => (
@@ -219,9 +239,23 @@ export default function StoryScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Chapters</Text>
           {story.chapters.map((entry) => (
-            <Text key={entry._id} style={styles.muted}>
-              {entry.index} · {entry.status} · {entry.arcRole}
-            </Text>
+            <Pressable
+              key={entry._id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: entry._id === chapter._id }}
+              onPress={() => setOpenId(entry._id)}
+              style={[
+                styles.chapterRow,
+                entry._id === chapter._id && styles.chapterRowOpen,
+              ]}
+            >
+              <Text style={styles.chapterLabel}>
+                {entry.index} · {entry.title ?? entry.arcRole}
+              </Text>
+              <Text style={styles.muted}>
+                {entry.status === "LOCKED" ? "read again" : entry.status}
+              </Text>
+            </Pressable>
           ))}
         </View>
       </ScrollView>
@@ -233,6 +267,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#FDF6E3", padding: 24 },
   content: { gap: 12, maxWidth: 720, width: "100%", alignSelf: "center" },
   title: { fontSize: 28, fontWeight: "800", color: "#1F1A17" },
+  cover: { width: "100%", aspectRatio: 4 / 3, borderRadius: 14 },
+  illustration: { width: "100%", aspectRatio: 4 / 3, borderRadius: 14 },
   muted: { color: "#78716C" },
   recap: { fontSize: 15, color: "#57534E", fontStyle: "italic" },
   section: { marginTop: 16, gap: 8 },
@@ -262,5 +298,13 @@ const styles = StyleSheet.create({
   buttonLabel: { fontSize: 17, fontWeight: "700", color: "#1F1A17" },
   paragraph: { fontSize: 18, lineHeight: 28, color: "#292524" },
   theEnd: { fontSize: 24, fontWeight: "800", color: "#1F1A17" },
+  chapterRow: {
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: "#FFFFFF",
+  },
+  chapterRowOpen: { backgroundColor: "#FEF3C7" },
+  chapterLabel: { fontSize: 15, fontWeight: "600", color: "#1F1A17" },
   error: { color: "#B91C1C" },
 });
