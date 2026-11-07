@@ -1,14 +1,13 @@
-import { ConvexProvider } from "convex/react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
-import { convex } from "@/lib/convex";
+import { BackendProvider } from "@/lib/BackendProvider";
 
 export default function RootLayout() {
   return (
-    <ConvexProvider client={convex}>
+    <BackendProvider>
       <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style="dark" />
-    </ConvexProvider>
+    </BackendProvider>
   );
 }

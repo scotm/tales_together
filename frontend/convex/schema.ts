@@ -28,6 +28,19 @@ export const extractionStatus = v.union(
   v.literal("FAILED"),
 );
 
+export const retryProgress = v.object({
+  attempt: v.number(),
+  maxAttempts: v.number(),
+  nextRetryAt: v.number(),
+});
+
+export const exportStatus = v.union(
+  v.literal("PREPARING_COVER"),
+  v.literal("BUILDING"),
+  v.literal("READY"),
+  v.literal("FAILED"),
+);
+
 export const itemStatus = v.union(
   v.literal("IN_BACKPACK"),
   v.literal("RESERVED_THIS_CHAPTER"),
@@ -88,6 +101,12 @@ export default defineSchema({
     ),
     coverFileId: v.optional(v.id("_storage")),
     epubFileId: v.optional(v.id("_storage")),
+    exportStatus: v.optional(exportStatus),
+    exportRunId: v.optional(v.string()),
+    exportStartedAt: v.optional(v.number()),
+    exportError: v.optional(v.string()),
+    exportWarning: v.optional(v.string()),
+    exportRetry: v.optional(retryProgress),
     createdAt: v.number(),
   }),
 
@@ -111,6 +130,10 @@ export default defineSchema({
     title: v.optional(v.string()), // set by the post-chapter extraction
     arcRole: v.string(),
     status: chapterStatus,
+    writingRunId: v.optional(v.string()),
+    writingStartedAt: v.optional(v.number()),
+    writingError: v.optional(v.string()),
+    writingRetry: v.optional(retryProgress),
     beatCards: v.array(beatCard),
     recapOneLiner: v.optional(v.string()),
     chosenBeat: v.optional(beatCard),

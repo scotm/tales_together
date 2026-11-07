@@ -84,7 +84,7 @@ describe("gemini adapter", () => {
     });
 
     await expect(provider.complete({ system: "s", user: "u" })).rejects.toThrow(
-      /gemini 404: model not found/,
+      /gemini 404: request failed/,
     );
   });
 });

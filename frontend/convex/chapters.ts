@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
@@ -9,7 +9,8 @@ import {
   internalQuery,
   mutation,
 } from "./_generated/server";
-import { PROSE_MIN_WORDS } from "./lib/config";
+import { queueExport } from "./exportJobs";
+import { GENERATION_LEASE_MS, PROSE_MIN_WORDS } from "./lib/config";
 import { type ParsedBeatCard, parseBeatPitch } from "./llm/beatCards";
 import { parseExtraction } from "./llm/extraction";
 import { BEAT_PITCH_SCHEMA, EXTRACTION_SCHEMA } from "./llm/jsonSchemas";
@@ -22,7 +23,8 @@ import {
 } from "./llm/prompts";
 import { countWords, lintProse } from "./llm/proseLint";
 import { getTextProvider } from "./llm/provider";
-import { beatStyle } from "./schema";
+import type { ProviderRetry } from "./llm/request";
+import { beatStyle, retryProgress } from "./schema";
 
 /** Everything a prompt needs about one chapter, in one query. */
 export const getChapterContext = internalQuery({
@@ -180,7 +182,7 @@ export const chooseBeat = mutation({
   handler: async (ctx, { chapterId, cardId }) => {
     const chapter = await ctx.db.get(chapterId);
     if (!chapter) throw new Error("chapter not found");
-    if (chapter.paragraphs.length > 0) {
+    if (chapter.paragraphs.length > 0 || chapter.status === "WRITING") {
       throw new Error("chapter is already written");
     }
 
@@ -197,33 +199,111 @@ export const beginWriting = internalMutation({
   handler: async (ctx, { chapterId }) => {
     const chapter = await ctx.db.get(chapterId);
     if (!chapter) throw new Error("chapter not found");
-    if (chapter.status !== "DIRECTING") {
+    if (
+      chapter.status !== "DIRECTING" &&
+      !(chapter.status === "WRITING" && !chapter.writingRunId)
+    ) {
       throw new Error(
         `chapter ${chapter.index} is ${chapter.status}, not DIRECTING`,
       );
     }
-    await ctx.db.patch(chapterId, { status: "WRITING" });
+    const runId = `${Date.now()}-${Math.random()}`;
+    await ctx.db.patch(chapterId, {
+      status: "WRITING",
+      writingRunId: runId,
+      writingStartedAt: Date.now(),
+      writingError: undefined,
+      writingRetry: undefined,
+    });
+    await ctx.scheduler.runAfter(
+      GENERATION_LEASE_MS,
+      internal.chapters.recoverWriting,
+      { chapterId, runId },
+    );
+    return runId;
   },
 });
 
 /** Roll back to the card pick when the model's prose never lands. */
 export const abandonWriting = internalMutation({
-  args: { chapterId: v.id("chapters") },
-  handler: async (ctx, { chapterId }) => {
-    await ctx.db.patch(chapterId, { status: "DIRECTING" });
+  args: { chapterId: v.id("chapters"), runId: v.string(), error: v.string() },
+  handler: async (ctx, { chapterId, runId, error }) => {
+    const chapter = await ctx.db.get(chapterId);
+    if (chapter?.status !== "WRITING" || chapter.writingRunId !== runId) return;
+    await ctx.db.patch(chapterId, {
+      status: "DIRECTING",
+      writingRunId: undefined,
+      writingStartedAt: undefined,
+      writingRetry: undefined,
+      writingError: error,
+    });
+  },
+});
+
+/** Also runs if an action crashes or is terminated before its catch block. */
+export const recoverWriting = internalMutation({
+  args: { chapterId: v.id("chapters"), runId: v.string() },
+  handler: async (ctx, { chapterId, runId }) => {
+    const chapter = await ctx.db.get(chapterId);
+    if (chapter?.status !== "WRITING" || chapter.writingRunId !== runId) return;
+    await ctx.db.patch(chapterId, {
+      status: "DIRECTING",
+      writingRunId: undefined,
+      writingStartedAt: undefined,
+      writingRetry: undefined,
+      writingError: "Writing was interrupted. Your choice is saved. Try again.",
+    });
+  },
+});
+
+export const writingRetry = internalMutation({
+  args: {
+    chapterId: v.id("chapters"),
+    runId: v.string(),
+    retry: retryProgress,
+  },
+  handler: async (ctx, { chapterId, runId, retry }) => {
+    const chapter = await ctx.db.get(chapterId);
+    if (chapter?.status !== "WRITING" || chapter.writingRunId !== runId) {
+      throw new Error("writing attempt is no longer active");
+    }
+    await ctx.db.patch(chapterId, { writingRetry: retry });
   },
 });
 
 export const setChapterProse = internalMutation({
-  args: { chapterId: v.id("chapters"), paragraphs: v.array(v.string()) },
+  args: {
+    chapterId: v.id("chapters"),
+    paragraphs: v.array(v.string()),
+    runId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     if (args.paragraphs.length === 0) {
       throw new Error("refusing to store an empty chapter");
     }
+    const chapter = await ctx.db.get(args.chapterId);
+    if (!chapter) throw new Error("chapter not found");
+    if (
+      (args.runId || chapter.writingRunId) &&
+      (chapter.status !== "WRITING" || chapter.writingRunId !== args.runId)
+    ) {
+      throw new Error("writing attempt is no longer active");
+    }
     await ctx.db.patch(args.chapterId, {
       paragraphs: args.paragraphs,
       status: "REVIEWING",
+      writingRunId: undefined,
+      writingStartedAt: undefined,
+      writingRetry: undefined,
+      writingError: undefined,
     });
+    // The production write and its follow-up work commit together. The
+    // tokenless form remains useful for seeding prose in tests and CLI fixtures.
+    if (args.runId) {
+      await ctx.scheduler.runAfter(0, internal.chapters.extractChapter, {
+        chapterId: args.chapterId,
+      });
+    }
   },
 });
 
@@ -257,7 +337,10 @@ export const writeChapter = action({
     );
 
     if (chapter.paragraphs.length > 0) return chapter.paragraphs;
-    if (chapter.status !== "DIRECTING") {
+    if (
+      chapter.status !== "DIRECTING" &&
+      !(chapter.status === "WRITING" && !chapter.writingRunId)
+    ) {
       throw new Error(
         `chapter ${chapter.index} is ${chapter.status}, not DIRECTING`,
       );
@@ -265,93 +348,133 @@ export const writeChapter = action({
     const chosenBeat = chapter.chosenBeat;
     if (!chosenBeat) throw new Error("pick a beat card before writing");
 
-    await ctx.runMutation(internal.chapters.beginWriting, { chapterId });
-
-    const previous = prior.at(-1);
-    const useItem = story.items.find(
-      (item) => item.id === chosenBeat.suggestedItemId,
-    );
-
-    const prompt = chapterProsePrompt({
-      storyTitle: story.title,
-      chapterIndex: chapter.index,
-      totalChapters: story.totalChapters,
-      arc: getArcRoleInstructions(chapter.index, story.totalChapters),
-      setting: story.worldState.setting,
-      vibe: story.vibe,
-      characters: characters.map((character) => ({
-        name: character.name,
-        role: character.role,
-        visualDescription: character.visualDescription,
-        quirk: character.quirk,
-      })),
-      availableItems: story.items
-        .filter((item) => item.status === "IN_BACKPACK")
-        .map((item) => ({ id: item.id, name: item.name })),
-      unresolvedThreads: story.worldState.unresolvedThreads,
-      priorChapters: prior.map((entry) => ({
-        index: entry.index,
-        summaryBullets: entry.summaryBullets,
-      })),
-      previousChapterTail: previous?.paragraphs.slice(-2).join("\n\n"),
-      chosenBeat: {
-        title: chosenBeat.title,
-        kidFriendlyPitch: chosenBeat.kidFriendlyPitch,
-      },
-      useItemName: useItem?.name,
-      endingStyle: "CLIFFHANGER",
+    const runId = await ctx.runMutation(internal.chapters.beginWriting, {
+      chapterId,
     });
+    // Named so a failure says which step gave up, not just that it did.
+    let stage = "prose";
+    try {
+      const progress = {
+        onRetry: async (retry: ProviderRetry) => {
+          await ctx.runMutation(internal.chapters.writingRetry, {
+            chapterId,
+            runId,
+            retry,
+          });
+        },
+      };
 
-    // On Gemini 3.x thinking tokens are charged against this budget, so a cap
-    // sized for the prose alone can return a truncated chapter.
-    const provider = getTextProvider("prose");
-    const raw = await provider.complete({ ...prompt, maxTokens: 2400 });
-    let paragraphs = splitParagraphs(raw);
-    let lint = lintProse(paragraphs);
+      const previous = prior.at(-1);
+      const useItem = story.items.find(
+        (item) => item.id === chosenBeat.suggestedItemId,
+      );
 
-    // One corrective call, never a loop and never a block: a short chapter is
-    // better than an error screen, but it should not go unnoticed either.
-    if (lint.ok && countWords(paragraphs) < PROSE_MIN_WORDS) {
-      const retry = await provider.complete({
-        system: prompt.system,
-        user:
-          `${prompt.user}\n\nYour previous attempt was ` +
-          `${countWords(paragraphs)} words. Rewrite the chapter inside the ` +
-          `target range. Keep the same events and ending; add dialogue and ` +
-          `sensory detail, not new plot.`,
-        maxTokens: 2400,
+      const prompt = chapterProsePrompt({
+        storyTitle: story.title,
+        chapterIndex: chapter.index,
+        totalChapters: story.totalChapters,
+        arc: getArcRoleInstructions(chapter.index, story.totalChapters),
+        setting: story.worldState.setting,
+        vibe: story.vibe,
+        characters: characters.map((character) => ({
+          name: character.name,
+          role: character.role,
+          visualDescription: character.visualDescription,
+          quirk: character.quirk,
+        })),
+        availableItems: story.items
+          .filter((item) => item.status === "IN_BACKPACK")
+          .map((item) => ({ id: item.id, name: item.name })),
+        unresolvedThreads: story.worldState.unresolvedThreads,
+        priorChapters: prior.map((entry) => ({
+          index: entry.index,
+          summaryBullets: entry.summaryBullets,
+        })),
+        previousChapterTail: previous?.paragraphs.slice(-2).join("\n\n"),
+        chosenBeat: {
+          title: chosenBeat.title,
+          kidFriendlyPitch: chosenBeat.kidFriendlyPitch,
+        },
+        useItemName: useItem?.name,
+        endingStyle: "CLIFFHANGER",
       });
-      const retried = splitParagraphs(retry);
-      const retriedLint = lintProse(retried);
-      if (retriedLint.ok && countWords(retried) > countWords(paragraphs)) {
-        paragraphs = retried;
-        lint = retriedLint;
+
+      // On Gemini 3.x thinking tokens are charged against this budget, so a cap
+      // sized for the prose alone can return a truncated chapter.
+      const provider = getTextProvider("prose");
+      const raw = await provider.complete(
+        { ...prompt, maxTokens: 2400 },
+        progress,
+      );
+      let paragraphs = splitParagraphs(raw);
+      let lint = lintProse(paragraphs);
+
+      // One corrective call, never a loop and never a block: a short chapter is
+      // better than an error screen, but it should not go unnoticed either.
+      if (lint.ok && countWords(paragraphs) < PROSE_MIN_WORDS) {
+        stage = "expand";
+        try {
+          const retry = await provider.complete(
+            {
+              system: prompt.system,
+              user:
+                `${prompt.user}\n\nYour previous attempt was ` +
+                `${countWords(paragraphs)} words. Rewrite the chapter inside the ` +
+                `target range. Keep the same events and ending; add dialogue and ` +
+                `sensory detail, not new plot.`,
+              maxTokens: 2400,
+            },
+            progress,
+          );
+          const retried = splitParagraphs(retry);
+          const retriedLint = lintProse(retried);
+          if (retriedLint.ok && countWords(retried) > countWords(paragraphs)) {
+            paragraphs = retried;
+            lint = retriedLint;
+          }
+        } catch {
+          // Expansion is optional. Keep the valid first draft if the provider
+          // exhausts retries rather than losing a chapter the child could read.
+        }
       }
+
+      stage = "moderation";
+      const verdict = await moderate(paragraphs.join("\n\n"));
+      if (!verdict.ok) {
+        throw new Error(`moderation rejected the chapter: ${verdict.reason}`);
+      }
+
+      stage = "lint";
+      if (!lint.ok) {
+        throw new Error(`prose lint rejected the chapter: ${lint.reason}`);
+      }
+
+      // shortcut: the whole chapter lands in one write; stream paragraph by
+      // paragraph once the adapter can stream (docs/03 §6).
+      stage = "save";
+      await ctx.runMutation(internal.chapters.setChapterProse, {
+        chapterId,
+        paragraphs,
+        runId,
+      });
+      return paragraphs;
+    } catch (cause) {
+      console.error("writeChapter failed", {
+        storyId: story._id,
+        chapterId,
+        chapterIndex: chapter.index,
+        stage,
+        cause,
+      });
+      const error =
+        "We couldn't finish this chapter. Your choice is saved. Try again.";
+      await ctx.runMutation(internal.chapters.abandonWriting, {
+        chapterId,
+        runId,
+        error,
+      });
+      throw new ConvexError(error);
     }
-
-    const verdict = await moderate(paragraphs.join("\n\n"));
-    if (!verdict.ok) {
-      await ctx.runMutation(internal.chapters.abandonWriting, { chapterId });
-      throw new Error(`moderation rejected the chapter: ${verdict.reason}`);
-    }
-
-    if (!lint.ok) {
-      await ctx.runMutation(internal.chapters.abandonWriting, { chapterId });
-      throw new Error(`prose lint rejected the chapter: ${lint.reason}`);
-    }
-
-    // shortcut: the whole chapter lands in one write; stream paragraph by
-    // paragraph once the adapter can stream (docs/03 §6).
-    await ctx.runMutation(internal.chapters.setChapterProse, {
-      chapterId,
-      paragraphs,
-    });
-
-    // Background work: continuity for the next chapter, art prompts for later.
-    await ctx.scheduler.runAfter(0, internal.chapters.extractChapter, {
-      chapterId,
-    });
-    return paragraphs;
   },
 });
 
@@ -535,9 +658,7 @@ export const lockChapter = mutation({
     });
 
     if (chapter.index === story.totalChapters) {
-      await ctx.scheduler.runAfter(0, internal.media.illustrateCover, {
-        storyId: story._id,
-      });
+      await queueExport(ctx, story._id);
     }
 
     // The EPUB needs the extraction even if it failed while the child read on.

@@ -1,9 +1,15 @@
 /// <reference types="jest" />
 import type { Id } from "@convex/_generated/dataModel";
 import { fireEvent, render } from "@testing-library/react-native";
-import { useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
-import StoryScreen from "./[storyId]";
+import { saveBook } from "@/lib/saveBook";
+import StoryScreen from "../app/story/[storyId]";
+
+jest.mock("@/lib/saveBook", () => ({
+  bookDeliveryLabel: "📖 Download the Book",
+  saveBook: jest.fn(),
+}));
 
 jest.mock("expo-router", () => ({ useLocalSearchParams: jest.fn() }));
 jest.mock("convex/react", () => ({
@@ -11,6 +17,13 @@ jest.mock("convex/react", () => ({
   useAction: jest.fn(() => jest.fn()),
   useMutation: jest.fn(() => jest.fn()),
 }));
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  (useAction as jest.Mock).mockImplementation(() => jest.fn());
+  (useMutation as jest.Mock).mockImplementation(() => jest.fn());
+  (saveBook as jest.Mock).mockReset();
+});
 
 const chapter = {
   _id: "chapter_1" as Id<"chapters">,
@@ -144,4 +157,92 @@ it("offers the finished book for download", async () => {
   const view = await render(<StoryScreen />);
   expect(view.getByText("📖 Download the Book")).toBeTruthy();
   expect(view.getByText("The End 🎉")).toBeTruthy();
+});
+
+it("restores the chapter retry control and error after a reload", async () => {
+  const write = jest.fn();
+  (useAction as jest.Mock).mockReturnValue(write);
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue({
+    ...unpublished(),
+    chapters: [
+      {
+        ...unpublished().chapters[0],
+        writingError: "Your choice is saved. Try again.",
+      },
+    ],
+  });
+  const view = await render(<StoryScreen />);
+  expect(view.getByText("Your choice is saved. Try again.")).toBeTruthy();
+  await fireEvent.press(view.getByText("Try Chapter Again"));
+  expect(write).toHaveBeenCalledWith({ chapterId: "chapter_1" });
+});
+
+it("shows retry progress and prevents a second write after a reload", async () => {
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue({
+    ...unpublished(),
+    chapters: [
+      {
+        ...unpublished().chapters[0],
+        status: "WRITING",
+        writingRunId: "run_1",
+        writingRetry: { attempt: 3, maxAttempts: 4, nextRetryAt: 1000 },
+      },
+    ],
+  });
+  const view = await render(<StoryScreen />);
+  expect(view.getByText(/Trying again \(3\/4\)/)).toBeTruthy();
+  expect(
+    view.getByRole("button", { name: "Writing..." }).props.accessibilityState
+      .disabled,
+  ).toBe(true);
+});
+
+it("shows export progress then offers retry when the saved export fails", async () => {
+  const retry = jest.fn();
+  (useMutation as jest.Mock).mockReturnValue(retry);
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  const completed = { ...story, chapters: [{ ...chapter, status: "LOCKED" }] };
+  (useQuery as jest.Mock).mockReturnValue({
+    ...completed,
+    story: { ...story.story, exportStatus: "PREPARING_COVER" },
+  });
+  const view = await render(<StoryScreen />);
+  expect(view.getByText("Painting your cover…")).toBeTruthy();
+  expect(view.queryByText("Try Download Again")).toBeNull();
+  (useQuery as jest.Mock).mockReturnValue({
+    ...completed,
+    story: {
+      ...story.story,
+      exportStatus: "FAILED",
+      exportError: "Your chapters are saved. Try again.",
+    },
+  });
+  await view.rerender(<StoryScreen />);
+  expect(view.getByText("Your chapters are saved. Try again.")).toBeTruthy();
+  await fireEvent.press(view.getByText("Try Download Again"));
+  expect(retry).toHaveBeenCalledWith({ storyId: "story_1" });
+});
+
+it("keeps a ready download available when saving the file fails", async () => {
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue({
+    ...story,
+    story: { ...story.story, epubUrl: "https://example.test/book.epub" },
+    chapters: [{ ...chapter, status: "LOCKED" }],
+  });
+  (saveBook as jest.Mock)
+    .mockRejectedValueOnce(new Error("network failure"))
+    .mockResolvedValueOnce(undefined);
+  const view = await render(<StoryScreen />);
+  await fireEvent.press(view.getByText("📖 Download the Book"));
+  expect(view.getByText(/We couldn't save the book/)).toBeTruthy();
+  await fireEvent.press(view.getByText("📖 Download the Book"));
+  expect(saveBook).toHaveBeenCalledTimes(2);
+  expect(saveBook).toHaveBeenLastCalledWith(
+    "https://example.test/book.epub",
+    "The Windy Kite",
+  );
+  expect(view.queryByText(/We couldn't save the book/)).toBeNull();
 });

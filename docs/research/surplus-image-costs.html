@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observed storybook image costs</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: var(--font-sans); color: var(--foreground); }
+    #surplus-book-costs { display: grid; gap: 18px; margin: 0; }
+    #surplus-book-costs h2 { margin: 0; font-weight: 500; }
+    #surplus-book-costs .row { display: grid; gap: 8px; }
+    #surplus-book-costs .label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+    #surplus-book-costs .value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    #surplus-book-costs .track { height: 20px; background: var(--secondary); }
+    #surplus-book-costs .bar { height: 20px; background: var(--chart-1); }
+    #surplus-book-costs .scale { display: flex; justify-content: space-between; color: var(--muted-foreground); }
+    #surplus-book-costs .note { margin: 0; color: var(--muted-foreground); }
+  </style>
+</head>
+<body>
+  <figure id="surplus-book-costs" aria-label="Projected image cost for a five-chapter book: direct Gemini 3.1 list output price, 40.2 cents; Surplus Gemini 2.5 at measured request rates, 0.037 cents. A projection for five illustrations and one portrait, excluding retries.">
+    <h2>Five illustrations + one cover · USD</h2>
+    <div class="row">
+      <div class="label"><span>Direct Gemini 3.1 · list estimate</span><span class="value">$0.402000</span></div>
+      <div class="track"><div class="bar" style="width:100%"></div></div>
+    </div>
+    <div class="row">
+      <div class="label"><span>Surplus Gemini 2.5 · measured-rate projection</span><span class="value">$0.000370</span></div>
+      <div class="track"><div class="bar" style="width:0.092039800995%"></div></div>
+    </div>
+    <div class="scale" aria-hidden="true"><span>$0</span><span>$0.402</span></div>
+    <figcaption class="note">Observed 7 Nov 2026. Surplus: 5 × $0.000053 + $0.000105. Google: six 1K outputs before prompt input. Different model versions; future prices and availability vary.</figcaption>
+  </figure>
+</body>
+</html>
