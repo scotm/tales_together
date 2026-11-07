@@ -40,6 +40,38 @@ run, and `pitchChapter` only needs JSON of the right shape to prove the plumbing
 
 **Revisit when:** a dev needs local prose worth reading, or CI needs to run without the Mac.
 
+## Image compression + EPUB export — accepted, 2026-11-05
+
+**Decision:** every stored illustration is re-encoded before it is linked, and the finished book is
+zipped into an EPUB 3 by a deterministic compiler.
+
+- Compression: `recompressJpeg` in `convex/llm/compressImage.ts`, quality 55, no resize. Runs in a
+  Node action (`convex/mediaNode.ts`) because `jpeg-js` needs `Buffer`.
+- EPUB: `convex/epub/build.ts` (V8 action) using JSZip, with `convex/epub/templates.ts` for every
+  XHTML/OPF string. Scheduled automatically when chapter 5 locks; also callable by hand.
+
+**Why:** provider JPEGs were 1.1–1.3 MB each (7 MB for a book) and an EPUB is just a ZIP, so both
+steps are cheap and keep the whole book under 2 MB.
+
+**Gotchas (verified 2026-11-05):**
+
+- `sharp` cannot work in Convex at all: the push sandbox fails with `Could not load the "sharp"
+  module using the linux-arm64 runtime` even with the platform packages installed. `jpeg-js` at
+  quality 55 gives 216–273 KB per image, ~80% smaller than the provider output.
+- `jpeg-js` needs Node's `Buffer`, so compression has to live in a `"use node"` action. JSZip runs
+  fine in the V8 runtime; the EPUB builder stays there.
+- `ctx.storage.delete` removes the row but not the blob on disk immediately. After recompressing the
+  six images the logical store held 1.49 MB while `/convex/data/storage/files` still showed 8.5 MB
+  of deleted blobs (reclaimed by backend GC, not by us).
+- EPUB byte order verified by unzipping the generated file: `mimetype` is entry 0, `STORE`, exactly
+  `application/epub+zip` with no newline; every manifest href exists in the archive and every spine
+  idref exists in the manifest (14 items, 6 spine entries).
+- A fixed entry date makes rebuilds byte-stable; `dcterms:modified` comes from `story.createdAt`, not
+  `Date.now()`.
+
+**Revisit when:** a reader rejects the file (only structural checks were run, not Apple Books), or
+vocabulary footnotes / the appendix are wanted.
+
 ## Illustrations — Gemini 3.1 Flash Image — accepted, 2026-11-05
 
 **Decision:** one image provider, prompt-only, model pinned in `convex/lib/config.ts` as

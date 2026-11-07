@@ -87,6 +87,7 @@ export default defineSchema({
       }),
     ),
     coverFileId: v.optional(v.id("_storage")),
+    epubFileId: v.optional(v.id("_storage")),
     createdAt: v.number(),
   }),
 

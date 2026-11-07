@@ -117,6 +117,9 @@ export const get = query({
         coverUrl: story.coverFileId
           ? await ctx.storage.getUrl(story.coverFileId)
           : null,
+        epubUrl: story.epubFileId
+          ? await ctx.storage.getUrl(story.epubFileId)
+          : null,
       },
       chapters: await Promise.all(
         chapters.map(async (chapter) => ({
@@ -147,6 +150,28 @@ export const getForCover = internalQuery({
     );
 
     return { ...story, heroVisualDescription: hero?.visualDescription };
+  },
+});
+
+export const getForExport = internalQuery({
+  args: { storyId: v.id("stories") },
+  handler: async (ctx, { storyId }) => {
+    const story = await ctx.db.get(storyId);
+    if (!story) throw new Error("story not found");
+
+    const chapters = await ctx.db
+      .query("chapters")
+      .withIndex("by_story", (q) => q.eq("storyId", storyId))
+      .collect();
+
+    return { story, chapters };
+  },
+});
+
+export const setEpub = internalMutation({
+  args: { storyId: v.id("stories"), fileId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.storyId, { epubFileId: args.fileId });
   },
 });
 

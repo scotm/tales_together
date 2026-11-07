@@ -10,8 +10,11 @@
 
 import type * as catalog from "../catalog.js";
 import type * as chapters from "../chapters.js";
+import type * as epub_build from "../epub/build.js";
+import type * as epub_templates from "../epub/templates.js";
 import type * as lib_config from "../lib/config.js";
 import type * as llm_beatCards from "../llm/beatCards.js";
+import type * as llm_compressImage from "../llm/compressImage.js";
 import type * as llm_extraction from "../llm/extraction.js";
 import type * as llm_gemini from "../llm/gemini.js";
 import type * as llm_image from "../llm/image.js";
@@ -24,6 +27,7 @@ import type * as llm_prompts from "../llm/prompts.js";
 import type * as llm_proseLint from "../llm/proseLint.js";
 import type * as llm_provider from "../llm/provider.js";
 import type * as media from "../media.js";
+import type * as mediaNode from "../mediaNode.js";
 import type * as stories from "../stories.js";
 
 import type {
@@ -35,8 +39,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   catalog: typeof catalog;
   chapters: typeof chapters;
+  "epub/build": typeof epub_build;
+  "epub/templates": typeof epub_templates;
   "lib/config": typeof lib_config;
   "llm/beatCards": typeof llm_beatCards;
+  "llm/compressImage": typeof llm_compressImage;
   "llm/extraction": typeof llm_extraction;
   "llm/gemini": typeof llm_gemini;
   "llm/image": typeof llm_image;
@@ -49,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "llm/proseLint": typeof llm_proseLint;
   "llm/provider": typeof llm_provider;
   media: typeof media;
+  mediaNode: typeof mediaNode;
   stories: typeof stories;
 }>;
 

@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -233,6 +234,19 @@ export default function StoryScreen() {
         ) : null}
 
         {allLocked ? <Text style={styles.theEnd}>The End 🎉</Text> : null}
+
+        {story.story.epubUrl ? (
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => Linking.openURL(story.story.epubUrl as string)}
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.buttonLabel}>📖 Download the Book</Text>
+          </Pressable>
+        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 

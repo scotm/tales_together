@@ -129,3 +129,19 @@ it("reopens a finished chapter from the list", async () => {
   await fireEvent.press(view.getByText("1 · The Kite Chase"));
   expect(view.getByText("Chapter one words.")).toBeTruthy();
 });
+
+it("offers the finished book for download", async () => {
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue({
+    ...story,
+    story: { ...story.story, epubUrl: "http://localhost/epub/book.epub" },
+    chapters: story.chapters.map((entry) => ({
+      ...entry,
+      status: "LOCKED" as const,
+    })),
+  });
+
+  const view = await render(<StoryScreen />);
+  expect(view.getByText("📖 Download the Book")).toBeTruthy();
+  expect(view.getByText("The End 🎉")).toBeTruthy();
+});
