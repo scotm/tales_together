@@ -3,6 +3,7 @@ import {
   escapeHtml,
   renderChapter,
   renderContentOpf,
+  renderCover,
   renderNav,
   renderTitlepage,
   STORYBOOK_CSS,
@@ -60,11 +61,16 @@ describe("epub templates", () => {
           mediaType: "application/xhtml+xml",
         },
       ],
-      spine: ["titlepage", "chapter-1"],
+      spine: ["cover", "titlepage", "chapter-1"],
     });
 
     expect(opf).toContain('id="cover-image"');
+    expect(opf).toContain("urn:tales-together:story_1");
     expect(opf).toContain('properties="cover-image"');
+    expect(opf).toContain(
+      'idref="cover" properties="rendition:layout-pre-paginated rendition:spread-none"',
+    );
+    expect(opf).toContain('<itemref idref="chapter-1" />');
     expect(opf).toContain('href="text/chapter_1.xhtml"');
     expect(opf.indexOf('idref="titlepage"')).toBeLessThan(
       opf.indexOf('idref="chapter-1"'),
@@ -85,13 +91,21 @@ describe("epub templates", () => {
     expect(nav).toContain('epub:type="toc"');
   });
 
-  it("renders a title page with or without a cover", () => {
-    expect(
-      renderTitlepage({ title: "Book", setting: "Sea", hasCover: true }),
-    ).toContain("../images/cover.jpg");
-    expect(
-      renderTitlepage({ title: "Book", setting: "Sea", hasCover: false }),
-    ).not.toContain("cover.jpg");
+  it("keeps the title page separate from the full-page cover", () => {
+    const titlepage = renderTitlepage({ title: "Book", setting: "Sea" });
+    expect(titlepage).toContain("Book");
+    expect(titlepage).toContain("Sea");
+    expect(titlepage).not.toContain("cover.jpg");
+  });
+
+  it("fits the cover into one portrait page without chapter margins", () => {
+    const cover = renderCover("Kites & <Clouds>");
+    expect(cover).toContain("Kites &amp; &lt;Clouds&gt;");
+    expect(cover).toContain('content="width=1600, height=2400"');
+    expect(cover).toContain('viewBox="0 0 1600 2400"');
+    expect(cover).toContain('preserveAspectRatio="xMidYMid meet"');
+    expect(cover).toContain("margin: 0; padding: 0;");
+    expect(cover).not.toContain("storybook.css");
   });
 
   it("escapes the title in the title page", () => {

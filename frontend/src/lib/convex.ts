@@ -1,4 +1,5 @@
 import { ConvexReactClient } from "convex/react";
+import { resolveConvexUrl } from "./convexUrl";
 
 const url = process.env.EXPO_PUBLIC_CONVEX_URL;
 
@@ -8,4 +9,10 @@ if (!url) {
   );
 }
 
-export const convex = new ConvexReactClient(url);
+const clientUrl = resolveConvexUrl(url);
+
+export function createConvexClient() {
+  return new ConvexReactClient(clientUrl);
+}
+
+export const convex = createConvexClient();

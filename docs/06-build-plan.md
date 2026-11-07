@@ -12,14 +12,21 @@ the code in those sections is reference, not a spec to copy line by line.
 - If a slice picks a vendor or discovers an API sharp edge, add a `decisions.md` entry in the same PR.
 - Vendor calls sit behind one interface with a fake implementation, so CI never needs an API key.
 
-## Where the code is today (2026-11-05)
+## Where the code is today (2026-11-07)
 
 | Have | Missing |
 | :--- | :--- |
-| `convex/schema.ts` (3 tables), `stories.create` / `get` / `listRecent`, `catalog.ts` | Nothing writes chapters 2–5 yet |
+| `convex/schema.ts` (3 tables), catalog setup and the complete five-chapter loop | Budget and image caps are not enforced; moderation is a pass-through |
 | `llm/` adapter (Gemini + local oMLX), Prompts 2–4, prose lint, full loop, background extraction, illustrations + cover, compressed images, EPUB 3 export | No video, no re-illustration path, no polish pass |
-| Expo home + story screen: deal cards, pick one, write, read paragraphs (chapter title now comes back from extraction) | Setup UI still uses hardcoded values; no download |
-| Test runners: `jest-expo` (3 UI tests) + `convex-test` (56 Vitest cases) | Chapters average 357 words vs a 400 target; no eval harness; EPUB unread by a real reader |
+| Expo catalog setup + story screen: deal cards, pick one, write, read; web download and native share sheet; saved generation/export progress and retries | Native sharing needs a real-device check; no polish pass |
+| Bounded provider backoff, 60-second timeouts, writing/export crash watchdogs and stale-attempt guards | Budget/image accounting and real moderation |
+| Home-screen connection timeout, backend address and reconnect control; Convex and Docker logs | Correlated operation history, retained failure causes and offline support reports; see [diagnostics plan](./07-application-diagnostics-plan.md) |
+| Surplus image adapter, verified request costs, PNG-to-JPEG conversion and image-spend off switch | Broader art/character-consistency evaluation; future prices are variable |
+| Test runners: `jest-expo` + `convex-test`; user verified Apple Books on iPad; revised EPUB passes epubcheck | No recorded Thorium check or CI epubcheck gate; revised portrait cover needs iPad re-import |
+
+The 2026-11-07 cover fix requests portrait art and exports a separate full-page cover.
+Existing landscape covers need explicit regeneration; title typography compositing,
+typed author credit and embedded fonts remain unfinished S6/S7 work.
 
 ## Slices
 
@@ -37,6 +44,10 @@ the code in those sections is reference, not a spec to copy line by line.
 
 S0–S5 reach "a book a child can read" with no image spend. That is the milestone worth protecting:
 art and packaging are additive, and if they slip the book still exists.
+
+The [application diagnostics plan](./07-application-diagnostics-plan.md) is a
+separate reliability track. Its recommended first milestone is D0–D2: a shared
+event/error contract, backend timelines and an offline client support report.
 
 ---
 

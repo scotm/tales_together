@@ -1,4 +1,5 @@
 import type { TextProvider, TextRequest } from "./provider";
+import { type RequestProgress, requestProviderJson } from "./request";
 
 interface ChatResponse {
   choices?: { message?: { content?: string | null } }[];
@@ -16,11 +17,9 @@ export function createOpenaiProvider(options: {
   model: string;
   fetchImpl?: typeof fetch;
 }): TextProvider {
-  const doFetch = options.fetchImpl ?? fetch;
-
   return {
     name: `openai:${options.model}`,
-    async complete(request: TextRequest) {
+    async complete(request: TextRequest, progress?: RequestProgress) {
       const headers: Record<string, string> = {
         "content-type": "application/json",
       };
@@ -28,9 +27,12 @@ export function createOpenaiProvider(options: {
         headers.authorization = `Bearer ${options.apiKey}`;
       }
 
-      const response = await doFetch(
-        `${options.baseUrl.replace(/\/$/, "")}/chat/completions`,
-        {
+      const payload = await requestProviderJson<ChatResponse>({
+        provider: "openai-compatible",
+        url: `${options.baseUrl.replace(/\/$/, "")}/chat/completions`,
+        fetchImpl: options.fetchImpl,
+        progress,
+        init: {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -46,17 +48,7 @@ export function createOpenaiProvider(options: {
             },
           }),
         },
-      );
-
-      if (!response.ok) {
-        // Never include the key. The body carries the server's own message.
-        const body = await response.text();
-        throw new Error(
-          `openai-compatible ${response.status}: ${body.slice(0, 300)}`,
-        );
-      }
-
-      const payload = (await response.json()) as ChatResponse;
+      });
       const text = payload.choices?.[0]?.message?.content;
 
       if (!text) {

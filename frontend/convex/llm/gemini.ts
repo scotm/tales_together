@@ -1,4 +1,5 @@
 import type { TextProvider, TextRequest } from "./provider";
+import { type RequestProgress, requestProviderJson } from "./request";
 
 interface GeminiPart {
   text?: string;
@@ -24,11 +25,9 @@ export function createGeminiProvider(options: {
   model: string;
   fetchImpl?: typeof fetch;
 }): TextProvider {
-  const doFetch = options.fetchImpl ?? fetch;
-
   return {
     name: `gemini:${options.model}`,
-    async complete(request: TextRequest) {
+    async complete(request: TextRequest, progress?: RequestProgress) {
       const url =
         "https://generativelanguage.googleapis.com/v1beta/models/" +
         `${options.model}:generateContent`;
@@ -45,35 +44,31 @@ export function createGeminiProvider(options: {
         generationConfig.thinkingConfig = { thinkingLevel: "low" };
       }
 
-      const response = await doFetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-goog-api-key": options.apiKey,
+      const payload = await requestProviderJson<GeminiResponse>({
+        provider: "gemini",
+        url,
+        fetchImpl: options.fetchImpl,
+        progress,
+        init: {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": options.apiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: request.system }] },
+            contents: [{ role: "user", parts: [{ text: request.user }] }],
+            generationConfig,
+          }),
         },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: request.system }] },
-          contents: [{ role: "user", parts: [{ text: request.user }] }],
-          generationConfig,
-        }),
       });
-
-      if (!response.ok) {
-        // Never include the key. The body carries the provider's own message.
-        const body = await response.text();
-        throw new Error(`gemini ${response.status}: ${body.slice(0, 300)}`);
-      }
-
-      const payload = (await response.json()) as GeminiResponse;
       const text = payload.candidates?.[0]?.content?.parts
         ?.filter((part) => !part.thought)
         .map((part) => part.text ?? "")
         .join("");
 
       if (!text) {
-        throw new Error(
-          `gemini returned no text: ${payload.error?.message ?? "unknown"}`,
-        );
+        throw new Error("gemini returned no text");
       }
       return text;
     },

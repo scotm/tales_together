@@ -77,7 +77,7 @@ describe("gemini image generator", () => {
   it("surfaces an HTTP error without leaking the key", async () => {
     const fetchImpl = (async () =>
       new Response("quota exceeded", {
-        status: 429,
+        status: 403,
       })) as unknown as typeof fetch;
     const generate = createGeminiImageGenerator({
       apiKey: "secret-key",
@@ -86,8 +86,21 @@ describe("gemini image generator", () => {
     });
 
     const failure = generate({ prompt: "x" });
-    await expect(failure).rejects.toThrow(/429/);
+    await expect(failure).rejects.toThrow(/403/);
     await expect(failure).rejects.not.toThrow(/secret-key/);
+  });
+
+  it("passes the portrait aspect ratio through for cover art", async () => {
+    const { calls, fetchImpl } = capture();
+    const generate = createGeminiImageGenerator({
+      apiKey: "test-key",
+      model: "gemini-3.1-flash-image",
+      fetchImpl,
+    });
+    await generate({ prompt: "a book cover", aspectRatio: "2:3" });
+    expect(calls[0]?.body).toMatchObject({
+      generationConfig: { imageConfig: { aspectRatio: "2:3" } },
+    });
   });
 });
 
@@ -101,12 +114,13 @@ describe("image prompts", () => {
 
   it("describes the hero on the cover, not just their name", () => {
     const prompt = coverRequest({
-      title: "The Windy Kite",
       setting: "A seaside town",
       heroVisualDescription: "a girl in a yellow raincoat",
       artStyle: "watercolour",
     });
-    expect(prompt).toContain("The Windy Kite");
+    expect(prompt).toContain("Do not draw any title");
     expect(prompt).toContain("a girl in a yellow raincoat");
+    expect(prompt).toContain("Portrait 2:3");
+    expect(prompt).toContain("no border");
   });
 });

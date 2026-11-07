@@ -6,6 +6,7 @@ import {
 } from "../lib/config";
 import { createGeminiProvider } from "./gemini";
 import { createOpenaiProvider } from "./openai";
+import type { RequestProgress } from "./request";
 
 export interface TextRequest {
   system: string;
@@ -19,7 +20,7 @@ export type ProviderPurpose = "prose" | "structured";
 
 export interface TextProvider {
   readonly name: string;
-  complete(request: TextRequest): Promise<string>;
+  complete(request: TextRequest, progress?: RequestProgress): Promise<string>;
 }
 
 export interface RecordedCall {

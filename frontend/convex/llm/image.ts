@@ -1,3 +1,5 @@
+import { type RequestProgress, requestProviderJson } from "./request";
+
 interface InlineData {
   mimeType?: string;
   data?: string;
@@ -12,7 +14,19 @@ export interface GeneratedImage {
   /** Backed by a plain ArrayBuffer so it can be stored as a Blob. */
   bytes: Uint8Array<ArrayBuffer>;
   contentType: string;
+  /** Provider receipt id, when available, for checking the settled charge. */
+  requestId?: string;
+  costMicroUsd?: number;
+  servedBy?: string;
 }
+
+export interface ImageRequest {
+  prompt: string;
+  aspectRatio?: string;
+  progress?: RequestProgress;
+}
+
+export type ImageGenerator = (request: ImageRequest) => Promise<GeneratedImage>;
 
 /**
  * Standard base64 decoder. Convex's V8 runtime is not guaranteed to have
@@ -54,17 +68,16 @@ export function createGeminiImageGenerator(options: {
   apiKey: string;
   model: string;
   fetchImpl?: typeof fetch;
-}): (request: {
-  prompt: string;
-  aspectRatio?: string;
-}) => Promise<GeneratedImage> {
-  const doFetch = options.fetchImpl ?? fetch;
-
-  return async ({ prompt, aspectRatio }) => {
-    const response = await doFetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
+}): ImageGenerator {
+  return async ({ prompt, aspectRatio, progress }) => {
+    const payload = await requestProviderJson<ImageResponse>({
+      provider: "image",
+      url:
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
         `${options.model}:generateContent`,
-      {
+      fetchImpl: options.fetchImpl,
+      progress,
+      init: {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -77,23 +90,13 @@ export function createGeminiImageGenerator(options: {
           },
         }),
       },
-    );
-
-    if (!response.ok) {
-      // Never include the key. The body carries the provider's own message.
-      const body = await response.text();
-      throw new Error(`image ${response.status}: ${body.slice(0, 300)}`);
-    }
-
-    const payload = (await response.json()) as ImageResponse;
+    });
     const inline = payload.candidates?.[0]?.content?.parts?.find(
       (part) => part.inlineData?.data,
     )?.inlineData;
 
     if (!inline?.data) {
-      throw new Error(
-        `image returned no bytes: ${payload.error?.message ?? "unknown"}`,
-      );
+      throw new Error("image returned no bytes");
     }
 
     return {

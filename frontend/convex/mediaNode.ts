@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { recompressJpeg } from "./llm/compressImage";
+import { recompressImage } from "./llm/compressImage";
 
 // `jpeg-js` needs Node's Buffer, so compression lives here and the V8 actions
 // call across. `sharp` would be faster but its native binary cannot load in the
@@ -21,7 +21,7 @@ async function shrink(
   const blob = await ctx.storage.get(fileId);
   if (!blob) throw new Error(`no stored file ${fileId}`);
 
-  const smaller = recompressJpeg(
+  const smaller = recompressImage(
     new Uint8Array(await blob.arrayBuffer()),
   ).bytes;
   return await ctx.storage.store(new Blob([smaller], { type: "image/jpeg" }));

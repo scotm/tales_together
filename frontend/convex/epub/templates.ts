@@ -47,7 +47,6 @@ p.first-para::first-letter {
   padding: 0.05em 0.08em 0 0;
 }
 .titlepage { text-align: center; }
-.titlepage img { max-width: 100%; height: auto; border-radius: 12px; }
 .cover-title { font-size: 2.2em; margin: 0.6em 0 0.2em; }
 .muted { color: #78716c; font-style: italic; }
 nav ol { list-style: none; padding-left: 0; }
@@ -61,10 +60,29 @@ export interface ChapterForEpub {
   hasImage: boolean;
 }
 
+/** A single fixed-layout cover; chapter typography must not add margins here. */
+export function renderCover(title: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1600, height=2400" />
+  <title>${escapeHtml(title)} — Cover</title>
+  <style>html, body { margin: 0; padding: 0; width: 100%; height: 100%; } svg { display: block; width: 100%; height: 100%; }</style>
+</head>
+<body epub:type="cover">
+  <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 2400" role="img" aria-labelledby="cover-title">
+    <title id="cover-title">${escapeHtml(title)}</title>
+    <image width="1600" height="2400" preserveAspectRatio="xMidYMid meet" xlink:href="../images/cover.jpg" />
+  </svg>
+</body>
+</html>`;
+}
+
 export function renderTitlepage(input: {
   title: string;
   setting: string;
-  hasCover: boolean;
 }): string {
   const title = escapeHtml(input.title);
   const setting = escapeHtml(input.setting);
@@ -78,7 +96,6 @@ export function renderTitlepage(input: {
 </head>
 <body epub:type="frontmatter">
   <section class="titlepage" epub:type="titlepage">
-    ${input.hasCover ? '<img src="../images/cover.jpg" alt="Book cover" />' : ""}
     <h1 class="cover-title">${title}</h1>
     <p class="muted">${setting}</p>
   </section>
@@ -152,13 +169,16 @@ export function renderContentOpf(input: {
     ),
   ].join("\n    ");
   const spineItems = input.spine
-    .map((idref) => `<itemref idref="${idref}" />`)
+    .map(
+      (idref) =>
+        `<itemref idref="${idref}"${idref === "cover" ? ' properties="rendition:layout-pre-paginated rendition:spread-none"' : ""} />`,
+    )
     .join("\n    ");
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="en">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="book-id">urn:uuid:${input.storyId}</dc:identifier>
+    <dc:identifier id="book-id">urn:tales-together:${escapeHtml(input.storyId)}</dc:identifier>
     <dc:title>${escapeHtml(input.title)}</dc:title>
     <dc:creator>A Young Author</dc:creator>
     <dc:language>en</dc:language>
@@ -176,6 +196,7 @@ export function renderContentOpf(input: {
 
 export function renderNav(
   chapters: { index: number; title?: string }[],
+  hasCover = false,
 ): string {
   const entries = chapters
     .map(
@@ -198,6 +219,13 @@ export function renderNav(
     <ol>
       <li><a href="text/titlepage.xhtml">Title Page</a></li>
       ${entries}
+    </ol>
+  </nav>
+  <nav epub:type="landmarks" hidden="hidden">
+    <h2>Landmarks</h2>
+    <ol>
+      ${hasCover ? '<li><a epub:type="cover" href="text/cover.xhtml">Cover</a></li>' : ""}
+      <li><a epub:type="titlepage" href="text/titlepage.xhtml">Title Page</a></li>
     </ol>
   </nav>
 </body>

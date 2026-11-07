@@ -6,7 +6,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -14,6 +13,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { bookDeliveryLabel, saveBook } from "@/lib/saveBook";
 
 export default function StoryScreen() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
@@ -24,10 +24,13 @@ export default function StoryScreen() {
   const writeChapter = useAction(api.chapters.writeChapter);
   const chooseBeat = useMutation(api.chapters.chooseBeat);
   const lockChapter = useMutation(api.chapters.lockChapter);
+  const retryExport = useMutation(api.exportJobs.retry);
 
   const [pitching, setPitching] = useState(false);
   const [writing, setWriting] = useState(false);
   const [locking, setLocking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [queuingExport, setQueuingExport] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +57,12 @@ export default function StoryScreen() {
   // A finished chapter can be reopened from the list without leaving the story.
   const chapter =
     story.chapters.find((entry) => entry._id === openId) ?? activeChapter;
+  const isWriting =
+    writing || (chapter?.status === "WRITING" && Boolean(chapter.writingRunId));
+  const exportBusy =
+    queuingExport ||
+    story.story.exportStatus === "PREPARING_COVER" ||
+    story.story.exportStatus === "BUILDING";
 
   async function deal() {
     if (!chapter) return;
@@ -101,12 +110,37 @@ export default function StoryScreen() {
     setError(null);
     try {
       await writeChapter({ chapterId: chapter._id });
-    } catch (cause) {
+    } catch {
       setError(
-        cause instanceof Error ? cause.message : "Could not write the chapter",
+        "We couldn't finish this chapter. Your choice is saved. Try again.",
       );
     } finally {
       setWriting(false);
+    }
+  }
+
+  async function prepareDownload() {
+    setQueuingExport(true);
+    setError(null);
+    try {
+      await retryExport({ storyId: storyId as Id<"stories"> });
+    } catch {
+      setError("We couldn't prepare the download. Try again.");
+    } finally {
+      setQueuingExport(false);
+    }
+  }
+
+  async function download() {
+    if (!story?.story.epubUrl) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveBook(story.story.epubUrl, story.story.title);
+    } catch {
+      setError("We couldn't save the book. Your download is ready; try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -117,6 +151,7 @@ export default function StoryScreen() {
           <Image
             accessibilityLabel="Book cover"
             source={{ uri: story.story.coverUrl }}
+            resizeMode="contain"
             style={styles.cover}
           />
         ) : null}
@@ -159,7 +194,11 @@ export default function StoryScreen() {
                   selected: chapter.chosenBeat?.cardId === card.cardId,
                 }}
                 onPress={() => pick(card.cardId)}
-                disabled={writing || chapter.paragraphs.length > 0}
+                disabled={
+                  isWriting ||
+                  chapter.status === "WRITING" ||
+                  chapter.paragraphs.length > 0
+                }
                 style={[
                   styles.card,
                   chapter.chosenBeat?.cardId === card.cardId &&
@@ -180,16 +219,32 @@ export default function StoryScreen() {
               <Pressable
                 accessibilityRole="button"
                 onPress={write}
-                disabled={writing}
+                disabled={isWriting}
                 style={({ pressed }) => [
                   styles.button,
                   pressed && styles.buttonPressed,
                 ]}
               >
                 <Text style={styles.buttonLabel}>
-                  {writing ? "Writing..." : "🪄 Write Chapter!"}
+                  {isWriting
+                    ? "Writing..."
+                    : chapter.writingError || chapter.status === "WRITING"
+                      ? "Try Chapter Again"
+                      : "🪄 Write Chapter!"}
                 </Text>
               </Pressable>
+            ) : null}
+            {isWriting && chapter.writingRetry ? (
+              <Text accessibilityLiveRegion="polite" style={styles.muted}>
+                The storyteller is taking a moment. Trying again (
+                {chapter.writingRetry.attempt}/
+                {chapter.writingRetry.maxAttempts})…
+              </Text>
+            ) : null}
+            {chapter.writingError && !isWriting ? (
+              <Text accessibilityRole="alert" style={styles.error}>
+                {chapter.writingError}
+              </Text>
             ) : null}
           </View>
         ) : null}
@@ -235,20 +290,71 @@ export default function StoryScreen() {
 
         {allLocked ? <Text style={styles.theEnd}>The End 🎉</Text> : null}
 
-        {story.story.epubUrl ? (
+        {allLocked && exportBusy ? (
+          <View accessibilityLiveRegion="polite" style={styles.section}>
+            <ActivityIndicator />
+            <Text style={styles.muted}>
+              {story.story.exportStatus === "PREPARING_COVER"
+                ? "Painting your cover…"
+                : "Preparing your book…"}
+            </Text>
+            {story.story.exportRetry ? (
+              <Text style={styles.muted}>
+                The illustrator is taking a moment. Trying again (
+                {story.story.exportRetry.attempt}/
+                {story.story.exportRetry.maxAttempts})…
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {allLocked && story.story.exportError ? (
+          <Text accessibilityRole="alert" style={styles.error}>
+            {story.story.exportError}
+          </Text>
+        ) : null}
+        {allLocked && story.story.exportWarning && !exportBusy ? (
+          <Text style={styles.muted}>{story.story.exportWarning}</Text>
+        ) : null}
+        {allLocked &&
+        !exportBusy &&
+        (!story.story.epubUrl ||
+          story.story.exportStatus === "FAILED" ||
+          story.story.exportWarning) ? (
           <Pressable
-            accessibilityRole="link"
-            onPress={() => Linking.openURL(story.story.epubUrl as string)}
+            accessibilityRole="button"
+            onPress={prepareDownload}
+            style={styles.button}
+          >
+            <Text style={styles.buttonLabel}>
+              {story.story.exportStatus === "FAILED"
+                ? "Try Download Again"
+                : story.story.exportWarning
+                  ? "Try Cover Again"
+                  : "Prepare Download"}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {story.story.epubUrl && !exportBusy ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={download}
+            disabled={saving}
             style={({ pressed }) => [
               styles.button,
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={styles.buttonLabel}>📖 Download the Book</Text>
+            <Text style={styles.buttonLabel}>
+              {saving ? "Preparing file…" : bookDeliveryLabel}
+            </Text>
           </Pressable>
         ) : null}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error && error !== chapter?.writingError ? (
+          <Text style={styles.error}>{error}</Text>
+        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Chapters</Text>
@@ -281,7 +387,12 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#FDF6E3", padding: 24 },
   content: { gap: 12, maxWidth: 720, width: "100%", alignSelf: "center" },
   title: { fontSize: 28, fontWeight: "800", color: "#1F1A17" },
-  cover: { width: "100%", aspectRatio: 4 / 3, borderRadius: 14 },
+  cover: {
+    width: "100%",
+    maxWidth: 320,
+    alignSelf: "center",
+    aspectRatio: 2 / 3,
+  },
   illustration: { width: "100%", aspectRatio: 4 / 3, borderRadius: 14 },
   muted: { color: "#78716C" },
   recap: { fontSize: 15, color: "#57534E", fontStyle: "italic" },
