@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import JSZip from "jszip";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -11,6 +11,7 @@ import {
   renderChapter,
   renderContainer,
   renderContentOpf,
+  renderCover,
   renderNav,
   renderTitlepage,
   STORYBOOK_CSS,
@@ -22,6 +23,7 @@ const FIXED_DATE = new Date("2020-01-01T00:00:00Z");
 async function runBuild(
   ctx: ActionCtx,
   storyId: Id<"stories">,
+  runId: string,
 ): Promise<Id<"_storage">> {
   const { story, chapters } = await ctx.runQuery(
     internal.stories.getForExport,
@@ -35,6 +37,7 @@ async function runBuild(
     zip.file(path, data, {
       date: FIXED_DATE,
       compression: store ? "STORE" : "DEFLATE",
+      createFolders: false,
     });
   };
   const read = async (id: Id<"_storage">) => {
@@ -62,6 +65,14 @@ async function runBuild(
 
   if (story.coverFileId) {
     add("OEBPS/images/cover.jpg", await read(story.coverFileId));
+    add("OEBPS/text/cover.xhtml", renderCover(story.title));
+    spine.unshift("cover");
+    manifest.push({
+      id: "cover",
+      href: "text/cover.xhtml",
+      mediaType: "application/xhtml+xml",
+      properties: "svg",
+    });
     manifest.push({
       id: "cover-image",
       href: "images/cover.jpg",
@@ -109,7 +120,7 @@ async function runBuild(
       authorName: story.authorName,
     }),
   );
-  add("OEBPS/nav.xhtml", renderNav(ordered));
+  add("OEBPS/nav.xhtml", renderNav(ordered, Boolean(story.coverFileId)));
   add(
     "OEBPS/content.opf",
     renderContentOpf({
@@ -133,17 +144,51 @@ async function runBuild(
       type: "application/epub+zip",
     }),
   );
-  await ctx.runMutation(internal.stories.setEpub, { storyId, fileId });
+  try {
+    await ctx.runMutation(internal.exportJobs.complete, {
+      storyId,
+      runId,
+      fileId,
+    });
+  } catch (error) {
+    await ctx.storage.delete(fileId);
+    throw error;
+  }
   return fileId;
+}
+
+async function trackedBuild(
+  ctx: ActionCtx,
+  storyId: Id<"stories">,
+  existingRunId?: string,
+): Promise<Id<"_storage">> {
+  const runId =
+    existingRunId ??
+    (await ctx.runMutation(internal.exportJobs.begin, {
+      storyId,
+      stage: "BUILDING",
+    }));
+  if (!runId) throw new ConvexError("Your book is already being prepared.");
+  try {
+    await ctx.runMutation(internal.exportJobs.building, { storyId, runId });
+    return await runBuild(ctx, storyId, runId);
+  } catch {
+    await ctx.runMutation(internal.exportJobs.fail, { storyId, runId });
+    throw new ConvexError(
+      "We couldn't prepare your download. Your chapters are saved. Try again.",
+    );
+  }
 }
 
 export const buildEpub = action({
   args: { storyId: v.id("stories") },
-  handler: async (ctx, { storyId }) => runBuild(ctx, storyId),
+  handler: async (ctx, { storyId }): Promise<Id<"_storage">> =>
+    trackedBuild(ctx, storyId),
 });
 
 /** Scheduler target: only internal functions may be scheduled. */
 export const buildEpubInternal = internalAction({
-  args: { storyId: v.id("stories") },
-  handler: async (ctx, { storyId }) => runBuild(ctx, storyId),
+  args: { storyId: v.id("stories"), runId: v.optional(v.string()) },
+  handler: async (ctx, { storyId, runId }): Promise<Id<"_storage">> =>
+    trackedBuild(ctx, storyId, runId),
 });

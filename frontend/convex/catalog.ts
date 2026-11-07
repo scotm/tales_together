@@ -4,6 +4,11 @@ export interface CatalogOption {
   promptFragment: string;
 }
 
+/** Problems also name the book, so the title reads right for every option. */
+export interface ProblemOption extends CatalogOption {
+  titleSuffix: string;
+}
+
 /**
  * Catalog ids are minted here and never rewritten: prompts, `suggestedItemId`
  * and the stored backpack all share them (docs/02, decisions.md).
@@ -35,28 +40,32 @@ export const WORLD_SETTINGS: CatalogOption[] = [
   },
 ];
 
-export const WORLD_PROBLEMS: CatalogOption[] = [
+export const WORLD_PROBLEMS: ProblemOption[] = [
   {
     id: "prob_cake",
     label: "The Royal Cake Floated Away!",
+    titleSuffix: "the Royal Cake Escape",
     promptFragment:
       "The giant triple-decker Royal Sponge Cake has grown wings and floated out the chimney right before the Queen's party",
   },
   {
     id: "prob_gravity",
     label: "Someone Turned Off Gravity!",
+    titleSuffix: "the Day Gravity Turned Off",
     promptFragment:
       "The town's Gravity Switch has gone missing and everyone's furniture, pets, and teacups are floating toward the ceiling",
   },
   {
     id: "prob_map",
     label: "The Whispering Treasure Map",
+    titleSuffix: "the Whispering Treasure Map",
     promptFragment:
       "They found a mysterious rolled-up map in the attic that giggles and gives riddles leading to a hidden vault",
   },
   {
     id: "prob_monster",
     label: "A Grumpy Monster Under the Bed",
+    titleSuffix: "the Grumpy Monster Under the Bed",
     promptFragment:
       "A fuzzy purple monster moved into the pantry because he lost his favourite teddy bear and won't stop snoring loudly",
   },

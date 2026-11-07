@@ -5,13 +5,19 @@ import {
   CONVEYOR_ITEMS,
   HERO_ARCHETYPES,
   HERO_OUTFITS,
+  type ProblemOption,
   QUIRK_STICKERS,
   WORLD_PROBLEMS,
   WORLD_SETTINGS,
 } from "@convex/catalog";
-import { useMutation, useQuery } from "convex/react";
+import {
+  useConvex,
+  useConvexConnectionState,
+  useMutation,
+  useQuery,
+} from "convex/react";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -22,6 +28,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useReconnectBackend } from "@/lib/BackendProvider";
 
 function pick<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)] as T;
@@ -54,9 +61,26 @@ export default function HomeScreen() {
   const router = useRouter();
   const stories = useQuery(api.stories.listRecent);
   const createStory = useMutation(api.stories.create);
+  const client = useConvex();
+  const connection = useConvexConnectionState();
+  const reconnect = useReconnectBackend();
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const waiting = stories === undefined || !connection.isWebSocketConnected;
+  useEffect(() => {
+    setLoadTimedOut(false);
+    if (!waiting) return;
+    const timer = setTimeout(() => {
+      console.warn("Story server response timed out", {
+        url: client.url,
+        ...client.connectionState(),
+      });
+      setLoadTimedOut(true);
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [waiting, client]);
 
   const [setting, setSetting] = useState<CatalogOption>(WORLD_SETTINGS[0]);
-  const [problem, setProblem] = useState<CatalogOption>(WORLD_PROBLEMS[0]);
+  const [problem, setProblem] = useState<ProblemOption>(WORLD_PROBLEMS[0]);
   const [lockedSetting, setLockedSetting] = useState(false);
   const [lockedProblem, setLockedProblem] = useState(false);
 
@@ -91,6 +115,10 @@ export default function HomeScreen() {
   }
 
   async function startStory() {
+    if (!connection.isWebSocketConnected) {
+      setError("Connect to the story server before starting a story.");
+      return;
+    }
     if (packed.length !== BACKPACK_SIZE) {
       setError(`Pack exactly ${BACKPACK_SIZE} things first.`);
       return;
@@ -100,7 +128,7 @@ export default function HomeScreen() {
     setError(null);
     try {
       const storyId = await createStory({
-        title: `${heroName} and the ${problem.label.replace(/!$/, "")}`,
+        title: `${heroName} and ${problem.titleSuffix}`,
         setting: setting.promptFragment,
         centralProblem: problem.promptFragment,
         protagonistName: heroName,
@@ -253,9 +281,10 @@ export default function HomeScreen() {
         <Pressable
           accessibilityRole="button"
           onPress={startStory}
-          disabled={creating}
+          disabled={creating || !connection.isWebSocketConnected}
           style={({ pressed }) => [
             styles.button,
+            !connection.isWebSocketConnected && styles.buttonDisabled,
             pressed && styles.buttonPressed,
           ]}
         >
@@ -268,7 +297,38 @@ export default function HomeScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent stories</Text>
-          {stories === undefined ? <ActivityIndicator /> : null}
+          {waiting && !loadTimedOut ? (
+            <View>
+              <ActivityIndicator accessibilityLabel="Loading recent stories" />
+              <Text style={styles.muted}>Connecting to your stories…</Text>
+            </View>
+          ) : null}
+          {loadTimedOut && waiting ? (
+            <View style={styles.card} accessibilityRole="alert">
+              <Text style={styles.error}>
+                {connection.isWebSocketConnected
+                  ? "The story server is taking too long to respond."
+                  : "Cannot connect to the story server. Check your connection and keep the server running."}
+              </Text>
+              <Text selectable style={styles.muted}>
+                Server: {client.url}
+              </Text>
+              <Text style={styles.muted}>We’ll reconnect automatically.</Text>
+              {connection.inflightMutations || connection.inflightActions ? (
+                <Text style={styles.muted}>
+                  Waiting for your pending request. Keep this page open.
+                </Text>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={reconnect}
+                  style={styles.spin}
+                >
+                  <Text style={styles.spinLabel}>Try connecting again</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : null}
           {stories?.length === 0 ? (
             <Text style={styles.muted}>
               No stories yet. Make the first one.
@@ -356,6 +416,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   buttonPressed: { transform: [{ translateY: 4 }], borderBottomWidth: 2 },
+  buttonDisabled: { opacity: 0.5 },
   buttonLabel: { fontSize: 18, fontWeight: "700", color: "#1F1A17" },
   error: { color: "#B91C1C" },
   muted: { color: "#78716C" },

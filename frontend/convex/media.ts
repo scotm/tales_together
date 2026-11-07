@@ -1,21 +1,10 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalQuery } from "./_generated/server";
-import { GEMINI_IMAGE_MODEL } from "./lib/config";
-import { createGeminiImageGenerator } from "./llm/image";
+import { getImageGenerator } from "./llm/imageProvider";
 
 const NO_TEXT =
-  "Children's storybook illustration, no text, no speech bubbles.";
-
-function requireKey(): string {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY is not set on this Convex deployment: npx convex env set GEMINI_API_KEY …",
-    );
-  }
-  return apiKey;
-}
+  "Children's storybook illustration, no text, no speech bubbles, no watermarks, logos or signatures.";
 
 /** The extractor writes the prompt; this only locks style and framing. */
 export function illustrationRequest(prompt: string, artStyle: string): string {
@@ -23,18 +12,17 @@ export function illustrationRequest(prompt: string, artStyle: string): string {
 }
 
 export function coverRequest(input: {
-  title: string;
   setting: string;
   heroVisualDescription?: string;
   artStyle: string;
 }): string {
   const hero = input.heroVisualDescription
-    ? `Front cover of a children's book called "${input.title}", starring ${
-        input.heroVisualDescription
-      }.`
-    : `Front cover of a children's book called "${input.title}".`;
+    ? `Children's storybook artwork, starring ${input.heroVisualDescription}.`
+    : "Children's storybook artwork.";
   return [
     hero,
+    "Portrait 2:3 composition, artwork extending to all four edges; no border, frame or paper margins.",
+    "Artwork only. Do not draw any title, lettering, typography, labels or signature.",
     `Setting: ${input.setting}.`,
     "Portrait orientation, 2:3. Keep the top third and bottom sixth calm,",
     "with only soft background, so a title and author credit can be added.",
@@ -58,10 +46,8 @@ export const illustrateChapter = internalAction({
     );
     if (chapter.illustrationFileId || !chapter.illustrationPrompt) return;
 
-    const generate = createGeminiImageGenerator({
-      apiKey: requireKey(),
-      model: GEMINI_IMAGE_MODEL,
-    });
+    const generate = getImageGenerator();
+    if (!generate) return;
     const image = await generate({
       prompt: illustrationRequest(chapter.illustrationPrompt, story.artStyle),
       aspectRatio: "4:3",
@@ -83,25 +69,43 @@ export const illustrateChapter = internalAction({
 });
 
 export const illustrateCover = internalAction({
-  args: { storyId: v.id("stories") },
-  handler: async (ctx, { storyId }): Promise<void> => {
+  args: {
+    storyId: v.id("stories"),
+    regenerate: v.optional(v.boolean()),
+    exportRunId: v.optional(v.string()),
+  },
+  handler: async (ctx, { storyId, regenerate, exportRunId }): Promise<void> => {
     const story = await ctx.runQuery(internal.stories.getForCover, { storyId });
     if (!story) return;
+    const runId =
+      exportRunId ??
+      (await ctx.runMutation(internal.exportJobs.begin, {
+        storyId,
+        stage: "PREPARING_COVER",
+      }));
+    if (!runId) return;
+    if (exportRunId && story.exportRunId !== exportRunId) return;
 
     try {
-      if (!story.coverFileId) {
-        const generate = createGeminiImageGenerator({
-          apiKey: requireKey(),
-          model: GEMINI_IMAGE_MODEL,
-        });
+      if (!story.coverFileId || regenerate) {
+        const generate = getImageGenerator();
+        if (!generate) return;
         const image = await generate({
           prompt: coverRequest({
-            title: story.title,
             setting: story.worldState.setting,
             heroVisualDescription: story.heroVisualDescription,
             artStyle: story.artStyle,
           }),
           aspectRatio: "2:3",
+          progress: {
+            onRetry: async (retry) => {
+              await ctx.runMutation(internal.exportJobs.retrying, {
+                storyId,
+                runId,
+                retry,
+              });
+            },
+          },
         });
 
         const original = await ctx.storage.store(
@@ -119,13 +123,24 @@ export const illustrateCover = internalAction({
           console.error("cover typography failed", cause);
         }
 
-        await ctx.runMutation(internal.stories.setCover, { storyId, fileId });
+        await ctx.runMutation(internal.stories.setCover, {
+          storyId,
+          fileId,
+          exportRunId: runId,
+        });
+        if (story.coverFileId) await ctx.storage.delete(story.coverFileId);
       }
+    } catch {
+      await ctx.runMutation(internal.exportJobs.coverFailed, {
+        storyId,
+        runId,
+      });
     } finally {
       // Export last, so the cover is in the archive. Runs even when the image
       // call fails: a coverless book beats no book.
       await ctx.scheduler.runAfter(0, internal.epub.build.buildEpubInternal, {
         storyId,
+        runId,
       });
     }
   },

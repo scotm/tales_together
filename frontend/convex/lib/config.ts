@@ -13,6 +13,13 @@ export const DEFAULT_ART_STYLE =
 export const BOOK_BUDGET_USD = 0.5;
 export const BOOK_IMAGE_CAP = 6;
 
+export const PROVIDER_MAX_ATTEMPTS = 4;
+export const PROVIDER_TIMEOUT_MS = 60_000;
+export const PROVIDER_RETRY_BASE_MS = 1_000;
+export const PROVIDER_RETRY_MAX_MS = 30_000;
+// Longer than two worst-case provider requests (initial prose + expansion).
+export const GENERATION_LEASE_MS = 15 * 60_000;
+
 // Both purposes default to Gemini 3.5 Flash-Lite (GA 2026-07-21). Prose moved
 // off gemini-3.8-flash on 2026-11-05: its thinking tokens ate the output cap
 // (1533 of 1600, 45 words returned) and it cost more for prose the child could
@@ -40,3 +47,8 @@ export const PROSE_MIN_WORDS = 360;
 // Illustration model (verified 2026-11-05): 4:3, ~1.2 MB JPEG, ~5 s a chapter.
 export const GEMINI_IMAGE_MODEL =
   process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image";
+
+// Surplus is opt-in: qualify offers against their reference price and verify
+// the settled charge separately. No automatic paid fallback between vendors.
+export const SURPLUS_DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image";
+export const SURPLUS_DEFAULT_MIN_DISCOUNT_PCT = 50;

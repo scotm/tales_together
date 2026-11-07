@@ -171,16 +171,18 @@ export const getForExport = internalQuery({
   },
 });
 
-export const setEpub = internalMutation({
-  args: { storyId: v.id("stories"), fileId: v.id("_storage") },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.storyId, { epubFileId: args.fileId });
-  },
-});
-
 export const setCover = internalMutation({
-  args: { storyId: v.id("stories"), fileId: v.id("_storage") },
+  args: {
+    storyId: v.id("stories"),
+    fileId: v.id("_storage"),
+    exportRunId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
+    if (args.exportRunId) {
+      const story = await ctx.db.get(args.storyId);
+      if (story?.exportRunId !== args.exportRunId)
+        throw new Error("export attempt is no longer active");
+    }
     await ctx.db.patch(args.storyId, { coverFileId: args.fileId });
   },
 });

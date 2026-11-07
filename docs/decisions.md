@@ -17,6 +17,174 @@ Revisit when:
 
 ---
 
+## iPad browser testing over LAN — accepted, 2026-11-07
+
+**Decision:** `npm run web:lan` detects the Mac's LAN IPv4 address, starts the
+existing Docker services with matching Convex public origins, and starts Expo in
+LAN mode on port 8081. `LAN_HOST` overrides detection when several adapters exist.
+The script supplies public client URLs through process environment overrides;
+the ignored `.env.local` file is never edited.
+
+**Gotcha:** binding Expo to all interfaces is only half the setup. Convex must
+also advertise its LAN address through `CONVEX_CLOUD_ORIGIN` and
+`CONVEX_SITE_ORIGIN`, or storage URLs point at the iPad's own loopback interface.
+The CLI can keep its existing local admin URL. A later plain `docker compose up`
+can restore loopback public origins; use `web:lan` again for device testing.
+
+**Verification:** Expo listens on `*:8081`; the app responds over the Mac's LAN
+address. The served bundle contains the LAN Convex URL, and existing cover/EPUB
+URLs use the LAN address and respond successfully. Safari on the physical iPad
+can reach `/version` (which returns `unknown`), but the user reported a stuck
+Recent stories spinner. A fresh desktop browser also successfully subscribes to
+`stories:listRecent` over the LAN WebSocket. The iPad-specific cause is not yet
+confirmed. Web development now replaces a configured loopback backend hostname
+with the browser's hostname. The home screen shows a connection timeout after
+ten seconds, the actual backend URL, and a reconnect control that preserves form
+state and refuses to discard pending writes. Browser console timeout warnings
+include connection state without story contents.
+
+## Discounted images through Surplus — accepted, 2026-11-07
+
+**Decision:** the local dev deployment now selects `IMAGE_PROVIDER=surplus`,
+`SURPLUS_IMAGE_MODEL=gemini-2.5-flash-image` and `SURPLUS_MIN_DISCOUNT_PCT=50`.
+Fresh deployments still default to direct Gemini unless explicitly configured.
+The Surplus key stays in Convex environment variables. Text generation is unchanged.
+Setting `IMAGE_PROVIDER=disabled` skips new art and still exports the readable book.
+
+**Contract:** `POST https://api.surplusintelligence.ai/min50/v1/images/generations`,
+Bearer auth, one image, `response_format=b64_json`. Chapters request `1024x768`;
+covers request `1024x1536`. PNG/JPEG bytes are detected and normalized to JPEG by
+`recompressImage` in the Node runtime. Shared bounded provider retries apply;
+402 (funding) and 404 (discount/availability) stop immediately. No automatic paid
+fallback between vendors. Existing stored artwork is reused.
+
+**Measured, not advertised:** API samples went through Convex storage/compression.
+The response cost headers were verified against each `/v1/requests/{id}` record:
+
+| Sample | Request | Charge (USD) | Generation time |
+| :--- | :--- | ---: | ---: |
+| Landscape | `01M6TMV9VXSSNRY5HT19YC4Y3W` | $0.000053 | 7.94 s |
+| Portrait | `01M6TMV9Z5X2RCA0R99F1D6HBJ` | $0.000105 | 7.11 s |
+
+Both records identify `provider=google`, `route_source=marketplace`,
+`fallback_used=false`, `settlement_status=accrued`, `settlement_group=settled`,
+`settlement_basis=derived_artifact`. Five landscapes plus one portrait project to
+$0.000370 at those sample rates. Direct Gemini 3.1 Flash Image lists $0.067 per 1K
+output, or $0.402 for six images before prompt input. The comparison includes a
+model change (3.1 → 2.5), not just a different seller. It is a snapshot, not a fixed
+future tariff, and excludes retries. The 50% gate compares Surplus's reference
+estimate, not Google's actual image-output tariff; final charges can differ.
+
+`npm run check` passes: 12 UI/delivery tests and 112 backend cases, including the
+Surplus wire contract, discount/funding refusals, no paid vendor fallback, PNG
+conversion/alpha flattening and image-disabled export. Code and generated API
+types were pushed to the local backend before the live samples.
+
+**Rejected routes:** Z-Image returned $0.005–$0.008 images, but landscape output
+still carried a Venice watermark with `hide_watermark=true`. Seedream and FLUX
+requests failed minimum-discount eligibility despite cheaper offers in the public
+listing; Venice Nano Banana 2 had no healthy seller. Do not equate the public
+order-book price with an executable buyer quote or silently loosen the key's floor.
+The optional Z-Image flag is retained as a best-effort upstream request, not a
+guarantee of unbranded art.
+
+**Quality limits:** Gemini 2.5 samples preserve the requested raincoat/boots and
+storybook style, with a different visual interpretation. The landscape still
+invented a small signature-like mark despite the negative prompt. This is a dev
+cost setting, not a completed character-consistency or family playtest evaluation.
+
+**Gotchas:** Convex V8's `process.env` cannot be copied with object spread to obtain
+the key; the sample action reads each relevant variable explicitly. `pngjs` imports
+Node built-ins, so its helper also needs `"use node"` even when called only by a Node
+action. Missing cost headers remain unknown, never zero. Request ids are retained
+by the CLI sampler for receipt checks; the full per-story spend ledger is still pending.
+
+Sources: [Surplus image API](https://www.surplusintelligence.ai/docs/api-reference/image-generations),
+[minimum-discount semantics](https://www.surplusintelligence.ai/docs/marketplace/minimum-discount-routing),
+[cost telemetry and receipts](https://www.surplusintelligence.ai/docs/marketplace/routing-controls),
+[Google pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-image).
+
+**Revisit when:** settled prices or availability change, fake signatures affect a
+book, or a larger quality evaluation favours another model. A per-story spend cap
+is separate unfinished work; a percentage discount is not a budget limit.
+
+## Provider retries, recovery and book delivery — accepted, 2026-11-07
+
+**Decision:** text (Gemini and local OpenAI-compatible) and image requests share a
+bounded HTTP retry layer. Four attempts total; 60 seconds per attempt including body
+reading; equal jitter over exponential 1, 2 and 4 second delay ceilings. Retry connection
+failures, timeouts and HTTP 408/429/500/502/503/504. Authentication, invalid requests,
+blocked/empty output, malformed JSON, schema validation and moderation do not auto-retry.
+Honour `Retry-After` seconds or HTTP dates; if it exceeds 30 seconds, stop rather than
+retrying early or holding an action open indefinitely. Error messages exclude provider
+response bodies, prompts, URLs and credentials.
+
+**Recovery:** writing claims an atomic attempt token, persists retry progress, and catches
+all failures after the claim, including missing configuration. Failure returns the chapter
+to `DIRECTING` with the chosen card and a saved error. An optional expansion failure keeps
+the valid first draft. Saving prose and scheduling extraction commit in one mutation.
+A 15-minute scheduled watchdog also releases crashed/terminated attempts. Tokens prevent
+late responses or old watchdogs from overwriting a newer attempt. Legacy `WRITING` rows
+without an attempt token can be retried directly.
+
+**Delivery:** export has persisted cover/build/ready/failed stages, progress, warnings and
+retry controls. Repeated requests share one active job; export also has a 15-minute crash
+watchdog. Cover failure still exports the readable book and offers a cover retry. Web
+downloads a named blob. Native downloads a temporary local EPUB with `expo-file-system`,
+opens `expo-sharing` with the EPUB MIME type/UTI, and cleans up the cache directory.
+Saving/sharing failures keep the server-side book available for another attempt.
+
+**Verification:** deterministic network tests cover backoff, jitter, `Retry-After`, hung
+requests/body reads, permanent errors and exhaustion. Backend tests cover recovery, stale
+workers, duplicate export requests and coverless fallback. UI and file-delivery tests cover
+reloaded progress/errors, retry controls, real file URIs and cleanup. Native sharing still
+needs a real-device check; bundle compilation cannot verify the operating system's sheet.
+`npm run check` passes (12 UI/delivery tests, 91 backend cases), and web/iOS/Android
+exports all compile. A live local export reused the existing cover, reached `READY`,
+and served an EPUB with working download CORS; no paid provider calls were made.
+
+Expo Router includes every file under `src/app` in native route discovery. The story
+screen test now lives in `src/__tests__/story.test.tsx`; leaving it beside the route
+pulled Jest/Testing Library into native bundles and broke compilation.
+
+**Gotchas:** a timed-out request can have succeeded remotely, so transport retries cannot
+promise exactly-once billing. Budget/image-cap accounting is still separate unfinished
+work. Retries wrap HTTP calls, never storage writes or the entire story action.
+
+**Revisit when:** real usage suggests different timeout/delay limits, or generation should
+move entirely behind scheduled jobs instead of a client-awaited writing action.
+
+## Portrait covers and reader verification — accepted, 2026-11-07
+
+**Decision:** request 2:3 portrait, edge-to-edge cover art; keep chapter art 4:3.
+The EPUB starts with a dedicated fixed-layout cover page using an SVG image wrapper,
+then a separate reflowable title page. Only the cover spine item overrides the layout;
+chapter text remains resizable. In-app covers use a portrait frame with `contain`.
+
+**Why:** the iPad screenshots showed a short landscape thumbnail in Apple Books' library
+and a cover illustration taking up only the top of a padded title page. Changing chapter
+CSS cannot fix the library thumbnail: its shape comes from the cover image itself.
+
+**Verification:** the user confirmed the previous export opens in Apple Books on a real
+iPad, and that epubcheck is functional. The rebuilt portrait-cover version of "The Windy
+Kite" passes EPUBCheck 5.4.0 with zero errors and zero warnings. `npm run check` passes
+(3 UI tests, 60 backend cases), including archive builds with and without a cover and
+byte-identical rebuilds a day apart. The revised cover's appearance on iPad and Thorium
+remain unverified.
+
+**Gotchas:** existing stored covers remain landscape until explicitly regenerated with
+`media:illustrateCover` and `regenerate: true`; rebuilding the EPUB alone cannot change
+the image's aspect ratio. Regeneration replaces the cover and schedules a fresh export.
+Apple Books can cache the old cover: delete the imported copy and re-import the new file.
+Title typography composited into the cover JPEG remains separate work.
+
+Validation also caught an existing metadata warning: a Convex id is not a UUID.
+Book identifiers now use `urn:tales-together:<storyId>`. ZIP auto-folder entries are
+disabled because JSZip otherwise gives them the current date, breaking reproducibility.
+
+**Revisit when:** the revised export has been re-imported on the iPad, or cover typography
+is implemented.
+
 ## Local text model for dev — oMLX + Gemma 4 E4B — accepted, 2026-11-05
 
 **Decision:** `LOCAL_LLM_URL` (plus optional `LOCAL_LLM_API_KEY` and `LOCAL_LLM_MODEL`) points

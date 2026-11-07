@@ -83,6 +83,26 @@ export interface ChapterForEpub {
   hasImage: boolean;
 }
 
+/** A single fixed-layout cover; chapter typography must not add margins here. */
+export function renderCover(title: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1600, height=2400" />
+  <title>${escapeHtml(title)} — Cover</title>
+  <style>html, body { margin: 0; padding: 0; width: 100%; height: 100%; } svg { display: block; width: 100%; height: 100%; }</style>
+</head>
+<body epub:type="cover">
+  <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 2400" role="img" aria-labelledby="cover-title">
+    <title id="cover-title">${escapeHtml(title)}</title>
+    <image width="1600" height="2400" preserveAspectRatio="xMidYMid meet" xlink:href="../images/cover.jpg" />
+  </svg>
+</body>
+</html>`;
+}
+
 export function renderTitlepage(input: {
   title: string;
   setting: string;
@@ -177,13 +197,16 @@ export function renderContentOpf(input: {
     ),
   ].join("\n    ");
   const spineItems = input.spine
-    .map((idref) => `<itemref idref="${idref}" />`)
+    .map(
+      (idref) =>
+        `<itemref idref="${idref}"${idref === "cover" ? ' properties="rendition:layout-pre-paginated rendition:spread-none"' : ""} />`,
+    )
     .join("\n    ");
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="en">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="book-id">urn:uuid:${input.storyId}</dc:identifier>
+    <dc:identifier id="book-id">urn:tales-together:${escapeHtml(input.storyId)}</dc:identifier>
     <dc:title>${escapeHtml(input.title)}</dc:title>
     <dc:creator>${escapeHtml(input.creator?.trim() || "A Young Author")}</dc:creator>
     <dc:language>en</dc:language>
@@ -201,6 +224,7 @@ export function renderContentOpf(input: {
 
 export function renderNav(
   chapters: { index: number; title?: string }[],
+  hasCover = false,
 ): string {
   const entries = chapters
     .map(
@@ -223,6 +247,13 @@ export function renderNav(
     <ol>
       <li><a href="text/titlepage.xhtml">Title Page</a></li>
       ${entries}
+    </ol>
+  </nav>
+  <nav epub:type="landmarks" hidden="hidden">
+    <h2>Landmarks</h2>
+    <ol>
+      ${hasCover ? '<li><a epub:type="cover" href="text/cover.xhtml">Cover</a></li>' : ""}
+      <li><a epub:type="titlepage" href="text/titlepage.xhtml">Title Page</a></li>
     </ol>
   </nav>
 </body>
