@@ -5,6 +5,7 @@ import {
   CONVEYOR_ITEMS,
   HERO_ARCHETYPES,
   HERO_OUTFITS,
+  type ProblemOption,
   QUIRK_STICKERS,
   WORLD_PROBLEMS,
   WORLD_SETTINGS,
@@ -83,7 +84,7 @@ export default function HomeScreen() {
   }, [waiting]);
 
   const [setting, setSetting] = useState<CatalogOption>(WORLD_SETTINGS[0]);
-  const [problem, setProblem] = useState<CatalogOption>(WORLD_PROBLEMS[0]);
+  const [problem, setProblem] = useState<ProblemOption>(WORLD_PROBLEMS[0]);
   const [lockedSetting, setLockedSetting] = useState(false);
   const [lockedProblem, setLockedProblem] = useState(false);
 
@@ -131,7 +132,7 @@ export default function HomeScreen() {
     try {
       const storyId = await diagnostics.track("stories.create", () =>
         createStory({
-          title: `${heroName} and the ${problem.label.replace(/!$/, "")}`,
+          title: `${heroName} and ${problem.titleSuffix}`,
           setting: setting.promptFragment,
           centralProblem: problem.promptFragment,
           protagonistName: heroName,

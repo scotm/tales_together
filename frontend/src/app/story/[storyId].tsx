@@ -1,5 +1,6 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { CONVEYOR_ITEMS } from "@convex/catalog";
 import {
   useAction,
   useConvexConnectionState,
@@ -20,7 +21,17 @@ import {
 } from "react-native";
 import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
 import { useQueryDiagnostics } from "@/lib/diagnostics/query";
+import { recapSentence } from "@/lib/recap";
 import { bookDeliveryLabel, saveBook } from "@/lib/saveBook";
+
+/** Kid-facing words for the chapter's internal workflow state. */
+const chapterStatusLabel = {
+  PITCHING: "dealing cards…",
+  DIRECTING: "choose a card",
+  WRITING: "writing…",
+  REVIEWING: "read it",
+  LOCKED: "read again",
+} as const;
 
 export default function StoryScreen() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
@@ -138,9 +149,11 @@ export default function StoryScreen() {
           clientOperationId: operationId,
         }),
       );
-    } catch {
+    } catch (cause) {
       setError(
-        "We couldn't finish this chapter. Your choice is saved. Try again.",
+        cause instanceof Error
+          ? cause.message
+          : "We couldn't finish this chapter. Your choice is saved. Try again.",
       );
     } finally {
       setWriting(false);
@@ -206,7 +219,9 @@ export default function StoryScreen() {
         <Text style={styles.muted}>{story.story.worldState.setting}</Text>
 
         {chapter?.recapOneLiner ? (
-          <Text style={styles.recap}>Previously: {chapter.recapOneLiner}</Text>
+          <Text style={styles.recap}>
+            Previously: {recapSentence(chapter.recapOneLiner)}
+          </Text>
         ) : null}
 
         {chapter ? (
@@ -233,34 +248,39 @@ export default function StoryScreen() {
               </Pressable>
             ) : null}
 
-            {chapter.beatCards.map((card) => (
-              <Pressable
-                key={card.cardId}
-                accessibilityRole="button"
-                accessibilityState={{
-                  selected: chapter.chosenBeat?.cardId === card.cardId,
-                }}
-                onPress={() => pick(card.cardId)}
-                disabled={
-                  isWriting ||
-                  chapter.status === "WRITING" ||
-                  chapter.paragraphs.length > 0
-                }
-                style={[
-                  styles.card,
-                  chapter.chosenBeat?.cardId === card.cardId &&
-                    styles.cardPicked,
-                ]}
-              >
-                <Text style={styles.cardTitle}>
-                  {card.iconEmoji} {card.title}
-                </Text>
-                <Text style={styles.cardPitch}>{card.kidFriendlyPitch}</Text>
-                {card.suggestedItemId ? (
-                  <Text style={styles.badge}>🎒 {card.suggestedItemId}</Text>
-                ) : null}
-              </Pressable>
-            ))}
+            {chapter.beatCards.map((card) => {
+              const item = CONVEYOR_ITEMS.find(
+                (entry) => entry.id === card.suggestedItemId,
+              );
+              return (
+                <Pressable
+                  key={card.cardId}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    selected: chapter.chosenBeat?.cardId === card.cardId,
+                  }}
+                  onPress={() => pick(card.cardId)}
+                  disabled={
+                    isWriting ||
+                    chapter.status === "WRITING" ||
+                    chapter.paragraphs.length > 0
+                  }
+                  style={[
+                    styles.card,
+                    chapter.chosenBeat?.cardId === card.cardId &&
+                      styles.cardPicked,
+                  ]}
+                >
+                  <Text style={styles.cardTitle}>
+                    {card.iconEmoji} {card.title}
+                  </Text>
+                  <Text style={styles.cardPitch}>{card.kidFriendlyPitch}</Text>
+                  {item ? (
+                    <Text style={styles.badge}>🎒 {item.label}</Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
 
             {chapter.chosenBeat && chapter.paragraphs.length === 0 ? (
               <Pressable
@@ -420,7 +440,7 @@ export default function StoryScreen() {
                 {entry.index} · {entry.title ?? entry.arcRole}
               </Text>
               <Text style={styles.muted}>
-                {entry.status === "LOCKED" ? "read again" : entry.status}
+                {chapterStatusLabel[entry.status]}
               </Text>
             </Pressable>
           ))}
@@ -438,9 +458,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: "800", color: "#1F1A17" },
   cover: {
     width: "100%",
-    maxWidth: 320,
-    alignSelf: "center",
+    maxWidth: 360,
     aspectRatio: 2 / 3,
+    borderRadius: 14,
+    alignSelf: "center",
   },
   illustration: { width: "100%", aspectRatio: 4 / 3, borderRadius: 14 },
   muted: { color: "#78716C" },

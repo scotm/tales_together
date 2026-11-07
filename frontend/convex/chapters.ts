@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { createEventId } from "../shared/diagnostics/contract";
+import { classifyError, createEventId } from "../shared/diagnostics/contract";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
@@ -418,6 +418,8 @@ export const writeChapter = action({
     const runId = await ctx.runMutation(internal.chapters.beginWriting, {
       chapterId,
     });
+    // Named so a failure says which step gave up, not just that it did.
+    let stage = "prose";
     const diag = createDiagnostics(ctx, {
       name: "write",
       traceId: traceIdFor(story),
@@ -498,6 +500,7 @@ export const writeChapter = action({
       // One corrective call, never a loop and never a block: a short chapter is
       // better than an error screen, but it should not go unnoticed either.
       if (lint.ok && countWords(paragraphs) < PROSE_MIN_WORDS) {
+        stage = "expand";
         try {
           const retry = await provider.complete(
             {
@@ -531,17 +534,20 @@ export const writeChapter = action({
         }
       }
 
+      stage = "moderation";
       const verdict = await moderate(paragraphs.join("\n\n"));
       if (!verdict.ok) {
         throw new Error(`moderation rejected the chapter: ${verdict.reason}`);
       }
 
+      stage = "lint";
       if (!lint.ok) {
         throw new Error(`prose lint rejected the chapter: ${lint.reason}`);
       }
 
       // shortcut: the whole chapter lands in one write; stream paragraph by
       // paragraph once the adapter can stream (docs/03 §6).
+      stage = "save";
       await ctx.runMutation(internal.chapters.setChapterProse, {
         chapterId,
         paragraphs,
@@ -557,6 +563,15 @@ export const writeChapter = action({
       await diag.finish("succeeded");
       return paragraphs;
     } catch (cause) {
+      const classified = classifyError(cause);
+      // The stage names the step; the raw cause and prompt stay out of logs.
+      console.error("writeChapter failed", {
+        storyId: story._id,
+        chapterId,
+        chapterIndex: chapter.index,
+        stage,
+        errorCode: classified.code,
+      });
       const superseded =
         cause instanceof Error && cause.message.includes("no longer active");
       await diag.finish(superseded ? "superseded" : "failed", cause);
