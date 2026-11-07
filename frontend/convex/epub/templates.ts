@@ -18,15 +18,32 @@ export const renderContainer =
 </container>`;
 
 export const STORYBOOK_CSS = `
+@font-face {
+  font-family: "StorybookBody";
+  src: url("../fonts/Lexend-Regular.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  font-family: "StorybookDisplay";
+  src: url("../fonts/Fraunces-Bold.woff2") format("woff2");
+  font-weight: bold;
+  font-style: normal;
+}
 body {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "StorybookBody", Georgia, "Times New Roman", serif;
   line-height: 1.6;
   margin: 0 auto;
   max-width: 34em;
   padding: 1.2em;
   color: #292524;
 }
-h1 { font-size: 1.6em; line-height: 1.2; margin: 0.4em 0 0.8em; }
+h1 {
+  font-family: "StorybookDisplay", Georgia, serif;
+  font-size: 1.6em;
+  line-height: 1.2;
+  margin: 0.4em 0 0.8em;
+}
 .chapter-header { margin-top: 2em; }
 .chapter-number {
   display: block;
@@ -47,8 +64,13 @@ p.first-para::first-letter {
   padding: 0.05em 0.08em 0 0;
 }
 .titlepage { text-align: center; }
-.titlepage img { max-width: 100%; height: auto; border-radius: 12px; }
 .cover-title { font-size: 2.2em; margin: 0.6em 0 0.2em; }
+.author-credit {
+  font-size: 1.1em;
+  font-style: italic;
+  margin: 0 0 0.4em;
+  text-indent: 0;
+}
 .muted { color: #78716c; font-style: italic; }
 nav ol { list-style: none; padding-left: 0; }
 nav li { margin: 0.4em 0; }
@@ -64,10 +86,11 @@ export interface ChapterForEpub {
 export function renderTitlepage(input: {
   title: string;
   setting: string;
-  hasCover: boolean;
+  authorName?: string;
 }): string {
   const title = escapeHtml(input.title);
   const setting = escapeHtml(input.setting);
+  const author = escapeHtml(input.authorName?.trim() || "A Young Author");
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
@@ -78,8 +101,9 @@ export function renderTitlepage(input: {
 </head>
 <body epub:type="frontmatter">
   <section class="titlepage" epub:type="titlepage">
-    ${input.hasCover ? '<img src="../images/cover.jpg" alt="Book cover" />' : ""}
+    <p class="chapter-number">An Original Interactive Storybook</p>
     <h1 class="cover-title">${title}</h1>
+    <p class="author-credit">by ${author}</p>
     <p class="muted">${setting}</p>
   </section>
 </body>
@@ -134,6 +158,7 @@ export interface ManifestItem {
 export function renderContentOpf(input: {
   storyId: string;
   title: string;
+  creator?: string;
   createdAt: number;
   manifest: ManifestItem[];
   spine: string[];
@@ -160,7 +185,7 @@ export function renderContentOpf(input: {
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">urn:uuid:${input.storyId}</dc:identifier>
     <dc:title>${escapeHtml(input.title)}</dc:title>
-    <dc:creator>A Young Author</dc:creator>
+    <dc:creator>${escapeHtml(input.creator?.trim() || "A Young Author")}</dc:creator>
     <dc:language>en</dc:language>
     <dc:date>${iso.slice(0, 10)}</dc:date>
     <meta property="dcterms:modified">${modified}</meta>

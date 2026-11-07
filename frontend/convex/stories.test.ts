@@ -60,6 +60,17 @@ test("get returns story, chapters and characters", async () => {
   expect(result?.characters[0].role).toBe("PROTAGONIST");
 });
 
+test("create keeps a trimmed typed author name", async () => {
+  const t = convexTest(schema, modules);
+  const storyId = await t.mutation(api.stories.create, {
+    ...sample,
+    authorName: "  Mira  ",
+  });
+
+  const result = await t.query(api.stories.get, { storyId });
+  expect(result?.story.authorName).toBe("Mira");
+});
+
 test("create rejects a backpack that is not exactly three items", async () => {
   const t = convexTest(schema, modules);
 
