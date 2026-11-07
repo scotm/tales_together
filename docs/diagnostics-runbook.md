@@ -1,7 +1,7 @@
 # Diagnostics runbook
 
-Status: D0–D3 implemented 2026-11-07. D4 reconciliation and rollups remain
-planned. The app has no operator login: inspection stays on the CLI.
+Status: D0–D4 implemented 2026-11-07. No external notifications are sent. The
+app has no operator login: inspection stays on the CLI.
 
 ## 1. Collect a report from the device
 
@@ -67,7 +67,53 @@ is 25 summaries.
   timeline. It is a label only, never authorization.
 - Unknown charges stay unknown. Diagnostics never estimate a price as actual.
 
-## 4. Console and platform logs
+## 4. Usage, receipts and baseline
+
+Normal generation records a receipt per provider attempt. A receipt keeps the
+provider request id when one exists, usage when reported, and the cost basis
+(`reported`, `estimated`, `settled`, `unknown`). Missing cost is unknown, never
+zero. Failed and timed-out attempts still get an unknown-charge receipt.
+
+```bash
+cd frontend
+node scripts/diagnostics.mjs usage --since 2026-11-01 --until 2026-11-08
+node scripts/diagnostics.mjs metrics --since 2026-11-01
+node scripts/diagnostics.mjs baseline
+```
+
+`usage` returns:
+
+- `totals.knownCostMicroUsd`: each known charge counted once;
+- `totals.settledCostMicroUsd` and `totals.reportedCostMicroUsd` separately;
+- `totals.unknownCostAttempts`: attempts whose charge is not known;
+- `byProvider`, `byPurpose`, `byModel` buckets;
+- `truncated` when the bounded window is full.
+
+Reconcile a known request id without overwriting the original observation:
+
+```bash
+node scripts/diagnostics.mjs reconcile \
+  --provider surplus --request-id <id> \
+  --state charged --settled-micro-usd 1200 --currency USD
+```
+
+`metrics` returns operation success/failure/degraded counts, per-operation status
+counts (including export/cover), p50/p95 durations, queue delay, watchdog
+recoveries, provider attempt latency and retry rate, and image byte reduction.
+`baseline` runs health, usage and metrics together.
+
+Query time-to-first-result, reconnection outcome and delivery handoff stay in
+the on-device report; there is no population-wide client ingestion in v0.
+
+Do not treat one successful sample price as the actual cost of a book. Compare
+reported and settled receipts, and keep unknown-charge attempts visible. Budget
+reservation/enforcement is separate from these observations.
+
+Alerts are not sent automatically. Run `baseline` a few times, then choose an
+operator destination and thresholds with a minimum sample size, deduplication
+and a recovery notice.
+
+## 5. Console and platform logs
 
 ```bash
 cd frontend
@@ -78,7 +124,7 @@ docker compose logs --tail 100 backend
 Console lines are JSON under the `diagnostics` key. Raw platform logs may
 contain historical unsanitized data and must be inspected before sharing.
 
-## 5. Deployment/build mismatch and source maps
+## 6. Deployment/build mismatch and source maps
 
 Compare the bundle's `buildId` and `effectiveOrigin` with the deployment being
 investigated. A stale web bundle can keep calling an old origin after a deploy;
@@ -99,7 +145,7 @@ To map a scrubbed stack frame:
 There is no source-map upload API. If the build id is missing, treat the report
 as a stale or local build and ask for a fresh export.
 
-## 6. Purge one story's diagnostics
+## 7. Purge one story's diagnostics
 
 Purge is admin-only, requires an explicit confirmation flag and deletes in
 bounded batches until the scope is empty:
@@ -109,14 +155,14 @@ cd frontend
 node scripts/diagnostics.mjs purge --story <storyId> --confirm
 ```
 
-Only diagnostic operations and events for that private story are removed. The
-story, chapters, images and EPUB are untouched. Another story's diagnostics are
-not affected.
+Only diagnostic operations, events and provider receipts for that private story
+are removed. The story, chapters, images and EPUB are untouched. Another story's
+diagnostics are not affected.
 
-## 7. Retention, quotas and privacy limits
+## 8. Retention, quotas and privacy limits
 
 - Detailed server events: 7 days.
-- Operation summaries: 30 days.
+- Operation summaries and provider receipts: 30 days.
 - Client buffer: 500 events or 256 KiB, in memory only (lost on reload).
 - Per-operation detail: 50 events; extra detail stays in console output.
 - Deployment defaults: 50,000 stored events, 10,000 summaries, 16 MiB of

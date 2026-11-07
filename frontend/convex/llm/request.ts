@@ -28,6 +28,10 @@ export interface RequestAttemptInfo {
   durationMs?: number;
   headerMs?: number;
   bodyMs?: number;
+  requestId?: string;
+  costMicroUsd?: number;
+  currency?: string;
+  costBasis?: "reported" | "estimated" | "settled" | "unknown";
 }
 
 export interface RequestResultInfo {
@@ -40,6 +44,10 @@ export interface RequestResultInfo {
     costBasis?: "reported" | "estimated" | "settled" | "unknown";
   };
   finishReason?: string;
+  requestId?: string;
+  costMicroUsd?: number;
+  currency?: string;
+  costBasis?: "reported" | "estimated" | "settled" | "unknown";
 }
 
 export interface RequestProgress {
@@ -75,6 +83,36 @@ function retryAfter(value: string | null): number {
     ? seconds * 1000
     : Date.parse(value) - Date.now();
   return Number.isFinite(delay) ? Math.max(0, delay) : 0;
+}
+
+interface ReceiptHeaders {
+  requestId?: string;
+  costMicroUsd?: number;
+  currency?: string;
+  costBasis?: "reported" | "estimated" | "settled" | "unknown";
+}
+
+/** Only allowlisted receipt headers leave the transport boundary. */
+function receiptHeaders(response: Response): ReceiptHeaders {
+  const rawId =
+    response.headers.get("x-request-id") ??
+    response.headers.get("x-goog-request-id") ??
+    undefined;
+  const requestId =
+    rawId && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(rawId)
+      ? rawId
+      : undefined;
+  const rawCost = response.headers.get("x-si-buyer-cost-micro");
+  const costMicroUsd =
+    rawCost && /^\d+$/.test(rawCost) && Number.isSafeInteger(Number(rawCost))
+      ? Number(rawCost)
+      : undefined;
+  return {
+    requestId,
+    costMicroUsd,
+    currency: costMicroUsd === undefined ? undefined : "USD",
+    costBasis: costMicroUsd === undefined ? undefined : "reported",
+  };
 }
 
 function now(): number {
@@ -148,6 +186,7 @@ export async function requestProviderJson<T>(options: {
     let status: number | undefined;
     let headerMs: number | undefined;
     let bodyMs: number | undefined;
+    let receipt: ReceiptHeaders = {};
     let payload: T | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
@@ -167,6 +206,7 @@ export async function requestProviderJson<T>(options: {
         });
         status = response.status;
         headerMs = now() - started;
+        receipt = receiptHeaders(response);
         // Headers are needed even for non-2xx and malformed bodies.
         try {
           options.onResponse?.(response);
@@ -205,6 +245,7 @@ export async function requestProviderJson<T>(options: {
         durationMs: now() - started,
         headerMs,
         bodyMs,
+        ...receipt,
       });
       return payload;
     } catch (error) {
@@ -240,6 +281,7 @@ export async function requestProviderJson<T>(options: {
       durationMs: now() - started,
       headerMs,
       bodyMs,
+      ...receipt,
     });
     if (!willRetry) throw error;
 

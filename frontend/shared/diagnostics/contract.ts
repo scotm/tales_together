@@ -61,6 +61,8 @@ export interface DiagnosticEvent {
   message?: string;
   retryable?: boolean;
   durationMs?: number;
+  bytesBefore?: number;
+  bytesAfter?: number;
   provider?: string;
   model?: string;
   purpose?: string;
@@ -211,6 +213,8 @@ export function createDiagnosticEvent(
     retryable:
       typeof input.retryable === "boolean" ? input.retryable : undefined,
     durationMs: finite(input.durationMs),
+    bytesBefore: finite(input.bytesBefore),
+    bytesAfter: finite(input.bytesAfter),
     provider: text(input.provider, 64),
     model: text(input.model, 96),
     purpose: text(input.purpose, 32),

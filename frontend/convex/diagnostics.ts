@@ -18,11 +18,13 @@ import {
   DIAGNOSTIC_MAX_STORED_EVENTS,
   DIAGNOSTIC_MAX_STORED_OPERATIONS,
   DIAGNOSTIC_PURGE_BATCH,
+  DIAGNOSTIC_RECEIPT_RETENTION_MS,
   DIAGNOSTIC_SUMMARY_RETENTION_MS,
   GENERATION_LEASE_MS,
 } from "./lib/config";
 import {
   diagnosticLevel,
+  diagnosticOutcome,
   diagnosticSource,
   diagnosticStatus,
   diagnosticUsage,
@@ -56,6 +58,8 @@ const eventFields = {
   storyId: v.optional(v.id("stories")),
   chapterId: v.optional(v.id("chapters")),
   timestamp: v.number(),
+  bytesBefore: v.optional(v.number()),
+  bytesAfter: v.optional(v.number()),
 };
 
 const operationFields = {
@@ -68,6 +72,7 @@ const operationFields = {
   storyId: v.optional(v.id("stories")),
   chapterId: v.optional(v.id("chapters")),
   startedAt: v.number(),
+  queueDelayMs: v.optional(v.number()),
   provider: v.optional(v.string()),
   model: v.optional(v.string()),
   purpose: v.optional(v.string()),
@@ -311,6 +316,398 @@ export const noteOperation = internalMutation({
   },
 });
 
+const receiptFields = {
+  dedupeKey: v.string(),
+  provider: v.string(),
+  model: v.optional(v.string()),
+  purpose: v.optional(v.string()),
+  requestId: v.optional(v.string()),
+  operationId: v.optional(v.string()),
+  traceId: v.optional(v.string()),
+  storyId: v.optional(v.id("stories")),
+  chapterId: v.optional(v.id("chapters")),
+  attempt: v.number(),
+  outcome: diagnosticOutcome,
+  httpStatus: v.optional(v.number()),
+  durationMs: v.optional(v.number()),
+  usage: v.optional(diagnosticUsage),
+  costMicroUsd: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  costBasis: v.optional(
+    v.union(
+      v.literal("reported"),
+      v.literal("estimated"),
+      v.literal("settled"),
+      v.literal("unknown"),
+    ),
+  ),
+  observedAt: v.optional(v.number()),
+};
+
+type StoredReceipt = Doc<"diagnosticReceipts">;
+
+function receiptCost(receipt: StoredReceipt): number | undefined {
+  if (receipt.settledCostMicroUsd !== undefined) {
+    return receipt.settledCostMicroUsd;
+  }
+  if (receipt.settlementState === "not_charged") return 0;
+  if (receipt.costBasis !== "unknown" && receipt.costMicroUsd !== undefined) {
+    return receipt.costMicroUsd;
+  }
+  return undefined;
+}
+
+interface UsageBucket {
+  attempts: number;
+  succeeded: number;
+  failed: number;
+  timeout: number;
+  unknown: number;
+  knownCostMicroUsd: number;
+  settledCostMicroUsd: number;
+  reportedCostMicroUsd: number;
+  unknownCostAttempts: number;
+}
+
+function emptyUsageBucket(): UsageBucket {
+  return {
+    attempts: 0,
+    succeeded: 0,
+    failed: 0,
+    timeout: 0,
+    unknown: 0,
+    knownCostMicroUsd: 0,
+    settledCostMicroUsd: 0,
+    reportedCostMicroUsd: 0,
+    unknownCostAttempts: 0,
+  };
+}
+
+function addUsage(bucket: UsageBucket, receipt: StoredReceipt): void {
+  bucket.attempts += 1;
+  bucket[receipt.outcome] += 1;
+  const cost = receiptCost(receipt);
+  if (cost === undefined) bucket.unknownCostAttempts += 1;
+  else bucket.knownCostMicroUsd += cost;
+  if (receipt.settledCostMicroUsd !== undefined) {
+    bucket.settledCostMicroUsd += receipt.settledCostMicroUsd;
+  }
+  if (receipt.costBasis !== "unknown" && receipt.costMicroUsd !== undefined) {
+    bucket.reportedCostMicroUsd += receipt.costMicroUsd;
+  }
+}
+
+function bucketFor<T extends UsageBucket>(
+  buckets: Record<string, T>,
+  key: string,
+  create: () => T,
+): T {
+  buckets[key] ??= create();
+  return buckets[key] as T;
+}
+
+function percentile(values: number[], ratio: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil(ratio * sorted.length);
+  const index = Math.min(sorted.length - 1, Math.max(0, rank - 1));
+  return sorted[index] ?? null;
+}
+
+/**
+ * Receipts are observations, not the bill. A retried call may have several
+ * attempt rows; each known charge is counted once, unknown attempts stay apart.
+ */
+export const recordReceipt = internalMutation({
+  args: receiptFields,
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const observedAt = args.observedAt ?? now;
+    const usageCost = args.usage?.costMicroUsd;
+    const costMicroUsd = args.costMicroUsd ?? usageCost;
+    const currency =
+      args.currency ??
+      args.usage?.currency ??
+      (costMicroUsd === undefined ? undefined : "USD");
+    const costBasis =
+      args.costBasis ??
+      args.usage?.costBasis ??
+      (costMicroUsd === undefined ? "unknown" : "reported");
+
+    // Patch a shared row so concurrent observations with the same request id
+    // serialize; Convex retries the loser and it then sees the first receipt.
+    const quota = await readQuota(ctx);
+    await ctx.db.patch(quota._id, { updatedAt: now });
+
+    const existing = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_dedupe", (q) => q.eq("dedupeKey", args.dedupeKey))
+      .first();
+    if (existing) {
+      const patch: Partial<StoredReceipt> = {
+        updatedAt: now,
+        expiresAt: now + DIAGNOSTIC_RECEIPT_RETENTION_MS,
+      };
+      if (existing.requestId === undefined && args.requestId !== undefined) {
+        patch.requestId = args.requestId;
+      }
+      if (existing.usage === undefined && args.usage !== undefined) {
+        patch.usage = args.usage;
+      }
+      if (existing.durationMs === undefined && args.durationMs !== undefined) {
+        patch.durationMs = args.durationMs;
+      }
+      // The first observation wins; a later header must not rewrite a charge.
+      if (existing.costMicroUsd === undefined && costMicroUsd !== undefined) {
+        patch.costMicroUsd = costMicroUsd;
+        patch.currency = currency;
+        patch.costBasis = costBasis;
+      }
+      await ctx.db.patch(existing._id, patch);
+      return { deduped: true };
+    }
+
+    await ctx.db.insert("diagnosticReceipts", {
+      dedupeKey: args.dedupeKey,
+      provider: args.provider,
+      model: args.model,
+      purpose: args.purpose,
+      requestId: args.requestId,
+      operationId: args.operationId,
+      traceId: args.traceId,
+      storyId: args.storyId,
+      chapterId: args.chapterId,
+      attempt: args.attempt,
+      outcome: args.outcome,
+      httpStatus: args.httpStatus,
+      durationMs: args.durationMs,
+      usage: args.usage,
+      costMicroUsd,
+      currency,
+      costBasis,
+      settlementState: "unknown",
+      observedAt,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: now + DIAGNOSTIC_RECEIPT_RETENTION_MS,
+    });
+    return { deduped: false };
+  },
+});
+
+/** Admin reconciliation; the original observation is never overwritten. */
+export const reconcileReceipt = internalMutation({
+  args: {
+    provider: v.string(),
+    requestId: v.string(),
+    settlementState: v.union(
+      v.literal("charged"),
+      v.literal("not_charged"),
+      v.literal("unknown"),
+    ),
+    settledCostMicroUsd: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const receipt = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_dedupe", (q) =>
+        q.eq("dedupeKey", `${args.provider}:${args.requestId}`),
+      )
+      .first();
+    if (!receipt) throw new Error("receipt not found for that request id");
+    const now = Date.now();
+    await ctx.db.patch(receipt._id, {
+      settlementState: args.settlementState,
+      settledCostMicroUsd:
+        args.settlementState === "not_charged"
+          ? 0
+          : args.settlementState === "charged"
+            ? args.settledCostMicroUsd
+            : undefined,
+      currency: args.currency ?? receipt.currency ?? "USD",
+      reconciledAt: now,
+      note: args.note?.slice(0, 200),
+      updatedAt: now,
+      expiresAt: now + DIAGNOSTIC_RECEIPT_RETENTION_MS,
+    });
+    return { reconciled: true };
+  },
+});
+
+/** Bounded cost view. Unknown charges are counted, never treated as zero. */
+export const usage = internalQuery({
+  args: {
+    since: v.optional(v.number()),
+    until: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const until = args.until ?? Date.now();
+    const since = args.since ?? until - DIAGNOSTIC_RECEIPT_RETENTION_MS;
+    const take = bounded(args.limit, 1_000, 5_000);
+    const receipts = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_observed", (q) =>
+        q.gte("observedAt", since).lte("observedAt", until),
+      )
+      .take(take);
+    const totals = emptyUsageBucket();
+    const byProvider: Record<string, UsageBucket> = {};
+    const byPurpose: Record<string, UsageBucket> = {};
+    const byModel: Record<string, UsageBucket> = {};
+    for (const receipt of receipts) {
+      addUsage(totals, receipt);
+      addUsage(
+        bucketFor(byProvider, receipt.provider, emptyUsageBucket),
+        receipt,
+      );
+      addUsage(
+        bucketFor(byPurpose, receipt.purpose ?? "unknown", emptyUsageBucket),
+        receipt,
+      );
+      addUsage(
+        bucketFor(byModel, receipt.model ?? "unknown", emptyUsageBucket),
+        receipt,
+      );
+    }
+    return {
+      window: { since, until },
+      receiptCount: receipts.length,
+      truncated: receipts.length === take,
+      currencies: [
+        ...new Set(
+          receipts
+            .map((receipt) => receipt.currency)
+            .filter((currency): currency is string => Boolean(currency)),
+        ),
+      ],
+      coveragePct:
+        totals.attempts > 0
+          ? ((totals.attempts - totals.unknownCostAttempts) / totals.attempts) *
+            100
+          : 0,
+      totals,
+      byProvider,
+      byPurpose,
+      byModel,
+    };
+  },
+});
+
+/** Bounded duration/error/service view over summaries, receipts and media. */
+export const metrics = internalQuery({
+  args: {
+    since: v.optional(v.number()),
+    until: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const until = args.until ?? Date.now();
+    const since = args.since ?? until - DIAGNOSTIC_HEALTH_WINDOW_MS;
+    const take = bounded(args.limit, 1_000, 5_000);
+    const operations = await ctx.db
+      .query("diagnosticOperations")
+      .withIndex("by_started", (q) =>
+        q.gte("startedAt", since).lte("startedAt", until),
+      )
+      .take(take);
+    const receipts = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_observed", (q) =>
+        q.gte("observedAt", since).lte("observedAt", until),
+      )
+      .take(take);
+    const events = await ctx.db
+      .query("diagnosticEvents")
+      .withIndex("by_timestamp", (q) =>
+        q.gte("timestamp", since).lte("timestamp", until),
+      )
+      .take(take);
+
+    const statusCounts: Record<string, number> = {};
+    const byOperation: Record<string, Record<string, number>> = {};
+    const durations: number[] = [];
+    const queueDelays: number[] = [];
+    for (const operation of operations) {
+      statusCounts[operation.status] =
+        (statusCounts[operation.status] ?? 0) + 1;
+      byOperation[operation.name] ??= {};
+      byOperation[operation.name][operation.status] =
+        (byOperation[operation.name][operation.status] ?? 0) + 1;
+      if (
+        operation.status !== "started" &&
+        operation.durationMs !== undefined
+      ) {
+        durations.push(operation.durationMs);
+      }
+      if (operation.queueDelayMs !== undefined) {
+        queueDelays.push(operation.queueDelayMs);
+      }
+    }
+
+    const receiptDurations = receipts
+      .map((receipt) => receipt.durationMs)
+      .filter((value): value is number => value !== undefined);
+    const retryAttempts = receipts.filter(
+      (receipt) => receipt.attempt > 1,
+    ).length;
+
+    const imageEvents = events.filter(
+      (event) =>
+        event.name === "media.compressed" &&
+        event.bytesBefore !== undefined &&
+        event.bytesAfter !== undefined,
+    );
+    const bytesBefore = imageEvents.reduce(
+      (sum, event) => sum + (event.bytesBefore ?? 0),
+      0,
+    );
+    const bytesAfter = imageEvents.reduce(
+      (sum, event) => sum + (event.bytesAfter ?? 0),
+      0,
+    );
+
+    return {
+      window: { since, until },
+      truncated:
+        operations.length === take ||
+        receipts.length === take ||
+        events.length === take,
+      operations: {
+        count: operations.length,
+        statusCounts,
+        byOperation,
+        p50Ms: percentile(durations, 0.5),
+        p95Ms: percentile(durations, 0.95),
+        maxMs: durations.length > 0 ? Math.max(...durations) : null,
+        queueP50Ms: percentile(queueDelays, 0.5),
+        queueP95Ms: percentile(queueDelays, 0.95),
+        watchdogRecoveries: operations.filter(
+          (operation) => operation.status === "recovered",
+        ).length,
+      },
+      provider: {
+        attempts: receipts.length,
+        retryAttempts,
+        retryRate: receipts.length > 0 ? retryAttempts / receipts.length : 0,
+        p50Ms: percentile(receiptDurations, 0.5),
+        p95Ms: percentile(receiptDurations, 0.95),
+      },
+      images: {
+        count: imageEvents.length,
+        bytesBefore,
+        bytesAfter,
+        reductionPct:
+          bytesBefore > 0
+            ? ((bytesBefore - bytesAfter) / bytesBefore) * 100
+            : 0,
+      },
+    };
+  },
+});
+
 /** Deletes one bounded batch, then reschedules until the expired rows are gone. */
 export const cleanupExpired = internalMutation({
   args: { limit: v.optional(v.number()) },
@@ -345,12 +742,26 @@ export const cleanupExpired = internalMutation({
       });
     }
 
-    if (events.length === take || operations.length === take) {
+    const receipts = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_expires", (q) => q.lte("expiresAt", now))
+      .take(take);
+    for (const receipt of receipts) await ctx.db.delete(receipt._id);
+
+    if (
+      events.length === take ||
+      operations.length === take ||
+      receipts.length === take
+    ) {
       await ctx.scheduler.runAfter(0, internal.diagnostics.cleanupExpired, {
         limit: take,
       });
     }
-    return { events: events.length, operations: operations.length };
+    return {
+      events: events.length,
+      operations: operations.length,
+      receipts: receipts.length,
+    };
   },
 });
 
@@ -393,14 +804,28 @@ export const purgeStory = internalMutation({
       });
     }
 
-    if (events.length === take || operations.length === take) {
+    const receipts = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_story_observed", (q) => q.eq("storyId", storyId))
+      .take(take);
+    for (const receipt of receipts) await ctx.db.delete(receipt._id);
+
+    if (
+      events.length === take ||
+      operations.length === take ||
+      receipts.length === take
+    ) {
       await ctx.scheduler.runAfter(0, internal.diagnostics.purgeStory, {
         storyId,
         confirm: true,
         limit: take,
       });
     }
-    return { events: events.length, operations: operations.length };
+    return {
+      events: events.length,
+      operations: operations.length,
+      receipts: receipts.length,
+    };
   },
 });
 
@@ -514,6 +939,10 @@ export const health = internalQuery({
       .query("diagnosticOperations")
       .withIndex("by_expires", (q) => q.lte("expiresAt", at))
       .take(take);
+    const expiredReceipts = await ctx.db
+      .query("diagnosticReceipts")
+      .withIndex("by_expires", (q) => q.lte("expiresAt", at))
+      .take(take);
 
     return {
       now: at,
@@ -541,6 +970,7 @@ export const health = internalQuery({
       expired: {
         events: expiredEvents.length,
         operations: expiredOperations.length,
+        receipts: expiredReceipts.length,
       },
       limits: {
         events: DIAGNOSTIC_MAX_STORED_EVENTS,

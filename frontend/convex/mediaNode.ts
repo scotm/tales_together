@@ -71,6 +71,8 @@ export const recompress = internalAction({
       await diag.record("media.compressed", {
         status: "succeeded",
         stage: "jpeg_reencode",
+        bytesBefore: result.inputBytes,
+        bytesAfter: result.outputBytes,
         message:
           `input_bytes=${result.inputBytes} output_bytes=${result.outputBytes} ` +
           `width=${result.width} height=${result.height}`,

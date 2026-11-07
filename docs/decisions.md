@@ -219,8 +219,10 @@ reach; Convex summaries keep enough evidence after the console log rotates.
 - Client support bundles strip story/chapter ids and redact private hosts. The on-device panel shows
   the full local origin so a developer can debug it.
 - D3 is implemented: paginated trace/recent, `diagnostics:health`, admin purge by story, daily
-  bounded retention cleanup and a deployment-wide event/summary/byte quota. D4 (receipt
-  reconciliation, rollups, alerts) remains planned.
+  bounded retention cleanup and a deployment-wide event/summary/byte quota.
+- D4 is implemented: normal-generation receipts, explicit reconciliation by provider request id,
+  bounded usage/metrics views and a baseline command. No external notifications are sent; alerts
+  remain an operator decision after a real baseline.
 
 **Revisit when:** real incidents show a missing event, retention needs a cleanup job, or provider
 spend needs reconciliation rather than sampled receipts.

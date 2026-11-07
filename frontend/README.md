@@ -36,8 +36,9 @@ switching between local and LAN testing to replace any cached development bundle
 - Checks: `npm run check` (typecheck → Biome → jest → Vitest).
 - One UI test: `npx jest src/path/to/file.test.tsx`
 - One backend test: `npx vitest run convex/stories.test.ts`
-- Server diagnostics: `npm run diagnostics -- health`, `trace <operationId>` or
-  `recent --story <storyId>`; see `../docs/diagnostics-runbook.md`.
+- Server diagnostics: `npm run diagnostics -- health`, `usage`, `metrics`,
+  `baseline`, `trace <operationId>` or `recent --story <storyId>`; see
+  `../docs/diagnostics-runbook.md`.
 
 ## Image cost controls
 

@@ -96,7 +96,7 @@ test("expired diagnostics are deleted in bounded batches", async () => {
   const result = await t.mutation(internal.diagnostics.cleanupExpired, {
     limit: 10,
   });
-  expect(result).toEqual({ events: 5, operations: 1 });
+  expect(result).toEqual({ events: 5, operations: 1, receipts: 0 });
   const remaining = await t.run(async (ctx) => ({
     events: await ctx.db.query("diagnosticEvents").collect(),
     operations: await ctx.db.query("diagnosticOperations").collect(),
@@ -210,7 +210,7 @@ test("cleanup continues in bounded batches until expired rows are gone", async (
   const repeated = await t.mutation(internal.diagnostics.cleanupExpired, {
     limit: 2,
   });
-  expect(repeated).toEqual({ events: 0, operations: 0 });
+  expect(repeated).toEqual({ events: 0, operations: 0, receipts: 0 });
 });
 
 test("health reports stuck work, quota and retention backlog", async () => {
@@ -299,6 +299,23 @@ test("purge removes one story's diagnostics and leaves the other story alone", a
         createdAt: index,
         expiresAt: Date.now() + 60_000,
       });
+      await ctx.db.insert("diagnosticReceipts", {
+        dedupeKey: `purge-receipt-${index}`,
+        provider: "surplus",
+        requestId: `purge-request-${index}`,
+        operationId: `purge-op-${index}`,
+        storyId,
+        attempt: 1,
+        outcome: "succeeded",
+        costBasis: "reported",
+        costMicroUsd: 100,
+        currency: "USD",
+        settlementState: "unknown",
+        observedAt: index,
+        createdAt: index,
+        updatedAt: index,
+        expiresAt: Date.now() + 60_000,
+      });
     }
   });
 
@@ -315,13 +332,17 @@ test("purge removes one story's diagnostics and leaves the other story alone", a
     confirm: true,
     limit: 10,
   });
-  expect(result).toEqual({ events: 1, operations: 1 });
+  expect(result).toEqual({ events: 1, operations: 1, receipts: 1 });
   const remaining = await t.run(async (ctx) => ({
     operations: await ctx.db.query("diagnosticOperations").collect(),
     events: await ctx.db.query("diagnosticEvents").collect(),
+    receipts: await ctx.db.query("diagnosticReceipts").collect(),
   }));
   expect(remaining.operations.map((operation) => operation.storyId)).toEqual([
     secondStory,
   ]);
   expect(remaining.events.map((event) => event.storyId)).toEqual([secondStory]);
+  expect(remaining.receipts.map((receipt) => receipt.storyId)).toEqual([
+    secondStory,
+  ]);
 });

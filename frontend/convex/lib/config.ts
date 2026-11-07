@@ -58,6 +58,7 @@ export const SURPLUS_DEFAULT_MIN_DISCOUNT_PCT = 50;
 // history indefinitely. Summaries live longer than detailed events.
 export const DIAGNOSTIC_EVENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const DIAGNOSTIC_SUMMARY_RETENTION_MS = 30 * 24 * 60 * 60_000;
+export const DIAGNOSTIC_RECEIPT_RETENTION_MS = 30 * 24 * 60 * 60_000;
 export const DIAGNOSTIC_MAX_EVENTS_PER_OPERATION = 50;
 export const DIAGNOSTIC_MAX_EVENTS_PER_CLEANUP = 200;
 export const DIAGNOSTIC_PURGE_BATCH = 200;

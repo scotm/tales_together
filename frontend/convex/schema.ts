@@ -59,6 +59,19 @@ export const diagnosticStatus = v.union(
   v.literal("recovered"),
 );
 
+export const diagnosticOutcome = v.union(
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("timeout"),
+  v.literal("unknown"),
+);
+
+export const diagnosticSettlement = v.union(
+  v.literal("unknown"),
+  v.literal("charged"),
+  v.literal("not_charged"),
+);
+
 export const diagnosticUsage = v.object({
   inputTokens: v.optional(v.number()),
   outputTokens: v.optional(v.number()),
@@ -215,6 +228,7 @@ export default defineSchema({
     purpose: v.optional(v.string()),
     attempts: v.optional(v.number()),
     retries: v.optional(v.number()),
+    queueDelayMs: v.optional(v.number()),
     createdAt: v.number(),
     expiresAt: v.number(),
   })
@@ -253,10 +267,52 @@ export default defineSchema({
     createdAt: v.number(),
     expiresAt: v.number(),
     bytes: v.optional(v.number()),
+    bytesBefore: v.optional(v.number()),
+    bytesAfter: v.optional(v.number()),
   })
     .index("by_event", ["eventId"])
     .index("by_operation_sequence", ["operationId", "sequence"])
     .index("by_story_timestamp", ["storyId", "timestamp"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_expires", ["expiresAt"]),
+
+  diagnosticReceipts: defineTable({
+    dedupeKey: v.string(),
+    provider: v.string(),
+    model: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    operationId: v.optional(v.string()),
+    traceId: v.optional(v.string()),
+    storyId: v.optional(v.id("stories")),
+    chapterId: v.optional(v.id("chapters")),
+    attempt: v.number(),
+    outcome: diagnosticOutcome,
+    httpStatus: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    usage: v.optional(diagnosticUsage),
+    costMicroUsd: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    costBasis: v.union(
+      v.literal("reported"),
+      v.literal("estimated"),
+      v.literal("settled"),
+      v.literal("unknown"),
+    ),
+    settlementState: diagnosticSettlement,
+    settledCostMicroUsd: v.optional(v.number()),
+    reconciledAt: v.optional(v.number()),
+    note: v.optional(v.string()),
+    observedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_dedupe", ["dedupeKey"])
+    .index("by_operation", ["operationId"])
+    .index("by_story_observed", ["storyId", "observedAt"])
+    .index("by_observed", ["observedAt"])
+    .index("by_settlement", ["settlementState"])
     .index("by_expires", ["expiresAt"]),
 
   diagnosticQuota: defineTable({

@@ -71,7 +71,8 @@ async function diagnostics(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
     const operations = await ctx.db.query("diagnosticOperations").collect();
     const events = await ctx.db.query("diagnosticEvents").collect();
-    return { operations, events };
+    const receipts = await ctx.db.query("diagnosticReceipts").collect();
+    return { operations, events, receipts };
   });
 }
 
@@ -90,13 +91,22 @@ test("an injected provider failure reconstructs retries, the final error and the
   ).rejects.toThrow(/choice is saved/);
   await failure;
 
-  const { operations, events } = await diagnostics(t);
+  const { operations, events, receipts } = await diagnostics(t);
   const write = operations.find((operation) => operation.name === "write");
   expect(write?.operationId).toBe("client-write-1");
   expect(write?.status).toBe("failed");
   expect(write?.errorCode).toBe("PROVIDER_HTTP_ERROR");
   expect(write?.attempts).toBe(4);
   expect(write?.retries).toBe(3);
+  expect(receipts).toHaveLength(4);
+  expect(
+    receipts.every(
+      (receipt) =>
+        receipt.outcome === "failed" &&
+        receipt.costBasis === "unknown" &&
+        receipt.costMicroUsd === undefined,
+    ),
+  ).toBe(true);
 
   const names = events.map((event) => event.name);
   expect(names).toContain("operation.failed");

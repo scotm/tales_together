@@ -57,6 +57,34 @@ export interface DiagnosticOptions {
   purpose?: string;
 }
 
+export interface ReceiptInput {
+  dedupeKey: string;
+  provider: string;
+  model?: string;
+  purpose?: string;
+  requestId?: string;
+  operationId?: string;
+  traceId?: string;
+  storyId?: Id<"stories">;
+  chapterId?: Id<"chapters">;
+  attempt: number;
+  outcome: "succeeded" | "failed" | "timeout" | "unknown";
+  httpStatus?: number;
+  durationMs?: number;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    costMicroUsd?: number;
+    currency?: string;
+    costBasis?: "reported" | "estimated" | "settled" | "unknown";
+  };
+  costMicroUsd?: number;
+  currency?: string;
+  costBasis?: "reported" | "estimated" | "settled" | "unknown";
+  observedAt?: number;
+}
+
 export interface Diagnostics {
   scope: DiagnosticContext;
   startedAt: number;
@@ -70,6 +98,7 @@ export interface Diagnostics {
     error?: unknown,
     extra?: { attempts?: number; retries?: number },
   ): Promise<void>;
+  recordReceipt(receipt: ReceiptInput): Promise<void>;
   providerProgress(options: {
     provider: string;
     model?: string;
@@ -138,6 +167,8 @@ export function createDiagnostics(
           safeMessage: event.message,
           retryable: event.retryable,
           durationMs: event.durationMs,
+          bytesBefore: event.bytesBefore,
+          bytesAfter: event.bytesAfter,
           provider: event.provider,
           model: event.model,
           purpose: event.purpose,
@@ -207,6 +238,9 @@ export function createDiagnostics(
           storyId: options.storyId as Id<"stories"> | undefined,
           chapterId: options.chapterId as Id<"chapters"> | undefined,
           startedAt,
+          queueDelayMs: options.scheduledAt
+            ? Math.max(0, startedAt - options.scheduledAt)
+            : undefined,
           provider: options.provider,
           model: options.model,
           purpose: options.purpose,
@@ -263,7 +297,30 @@ export function createDiagnostics(
       );
     },
 
+    async recordReceipt(receipt) {
+      await bounded(
+        ctx.runMutation(internal.diagnostics.recordReceipt, {
+          ...receipt,
+          operationId: receipt.operationId ?? operationId,
+          traceId: receipt.traceId ?? options.traceId,
+          storyId: receipt.storyId ?? options.storyId,
+          chapterId: receipt.chapterId ?? options.chapterId,
+          observedAt: receipt.observedAt ?? Date.now(),
+        }),
+      );
+    },
+
     providerProgress({ provider, model, purpose, business }) {
+      let lastAttempt = 0;
+      let lastRequestId: string | undefined;
+      let lastCostMicroUsd: number | undefined;
+      let lastCurrency: string | undefined;
+      let lastCostBasis:
+        | "reported"
+        | "estimated"
+        | "settled"
+        | "unknown"
+        | undefined;
       return {
         onAttempt: async (attempt: RequestAttemptInfo) => {
           attempts = Math.max(attempts, attempt.attempt);
@@ -273,6 +330,36 @@ export function createDiagnostics(
               : attempt.phase === "succeeded"
                 ? "succeeded"
                 : "failed";
+          if (attempt.phase !== "started") {
+            lastAttempt = attempt.attempt;
+            lastRequestId = attempt.requestId;
+            lastCostMicroUsd = attempt.costMicroUsd;
+            lastCurrency = attempt.currency;
+            lastCostBasis = attempt.costBasis;
+            const outcome =
+              attempt.phase === "succeeded"
+                ? "succeeded"
+                : attempt.code === "PROVIDER_TIMEOUT"
+                  ? "timeout"
+                  : "failed";
+            await diagnostics.recordReceipt({
+              dedupeKey: attempt.requestId
+                ? `${provider}:${attempt.requestId}`
+                : `${provider}:${operationId}:${attempt.attempt}`,
+              provider,
+              model,
+              purpose,
+              requestId: attempt.requestId,
+              attempt: attempt.attempt,
+              outcome,
+              httpStatus: attempt.status,
+              durationMs: attempt.durationMs,
+              costMicroUsd: attempt.costMicroUsd,
+              currency: attempt.currency,
+              costBasis: attempt.costBasis ?? "unknown",
+              observedAt: Date.now(),
+            });
+          }
           await diagnostics.record(`provider.attempt.${attempt.phase}`, {
             level: attempt.phase === "failed" ? "error" : "info",
             status,
@@ -313,6 +400,26 @@ export function createDiagnostics(
           await business?.onRetry?.(retry);
         },
         onResult: async (result) => {
+          const requestId = result.requestId ?? lastRequestId;
+          const costMicroUsd = result.costMicroUsd ?? lastCostMicroUsd;
+          const currency = result.currency ?? lastCurrency;
+          const costBasis = result.costBasis ?? lastCostBasis;
+          await diagnostics.recordReceipt({
+            dedupeKey: requestId
+              ? `${provider}:${requestId}`
+              : `${provider}:${operationId}:${lastAttempt || 1}`,
+            provider,
+            model,
+            purpose,
+            requestId,
+            attempt: lastAttempt || 1,
+            outcome: "succeeded",
+            usage: result.usage,
+            costMicroUsd,
+            currency,
+            costBasis: costBasis ?? "unknown",
+            observedAt: Date.now(),
+          });
           await diagnostics.record("provider.attempt.result", {
             status: "succeeded",
             stage: purpose,
