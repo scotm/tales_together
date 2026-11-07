@@ -1,7 +1,7 @@
 # Diagnostics runbook
 
-Status: D0–D2 implemented 2026-11-07. D3 retention/quotas and D4 reconciliation
-remain planned. The app has no operator login: inspection stays on the CLI.
+Status: D0–D3 implemented 2026-11-07. D4 reconciliation and rollups remain
+planned. The app has no operator login: inspection stays on the CLI.
 
 ## 1. Collect a report from the device
 
@@ -26,12 +26,25 @@ story and start time.
 ```bash
 cd frontend
 node scripts/diagnostics.mjs recent --story <storyId>
+node scripts/diagnostics.mjs recent --limit 25
 node scripts/diagnostics.mjs trace <operationId>
+node scripts/diagnostics.mjs trace <operationId> --limit 50 --cursor <cursor>
+node scripts/diagnostics.mjs health
 ```
 
 Add `--prod` for the hosted deployment. The script wraps
-`npx convex run diagnostics:trace` / `diagnostics:recent`; both are internal
-queries with bounded reads (one operation, 100 events, 25 summaries).
+`npx convex run diagnostics:trace` / `diagnostics:recent` / `diagnostics:health`;
+all are internal queries. Reads are paginated: follow `continueCursor` until
+`isDone` is true. The default trace page is 100 events; the default recent page
+is 25 summaries.
+
+`health` returns:
+
+- `stuck`: started operations older than the generation lease;
+- `failed` / `degraded`: terminal summaries in the last 24 hours;
+- `quota`: stored events, operations, bytes and dropped count;
+- `expired`: rows past `expiresAt` still waiting for cleanup;
+- `limits`: the configured deployment budget.
 
 ## 3. Interpret the trace
 
@@ -49,6 +62,9 @@ queries with bounded reads (one operation, 100 events, 25 summaries).
   terminated; the domain state was released, but the cause may only be in the
   console log.
 - A start with no end is evidence of an incomplete trace, not proof of a cause.
+- Client action events carry an `operationId` that is passed to the server as
+  `clientOperationId`. Use it with `trace` to join the report to the server
+  timeline. It is a label only, never authorization.
 - Unknown charges stay unknown. Diagnostics never estimate a price as actual.
 
 ## 4. Console and platform logs
@@ -62,20 +78,56 @@ docker compose logs --tail 100 backend
 Console lines are JSON under the `diagnostics` key. Raw platform logs may
 contain historical unsanitized data and must be inspected before sharing.
 
-## 5. Deployment/build mismatch
+## 5. Deployment/build mismatch and source maps
 
 Compare the bundle's `buildId` and `effectiveOrigin` with the deployment being
 investigated. A stale web bundle can keep calling an old origin after a deploy;
 reload the page or rebuild before blaming the backend.
 
-## 6. Retention and privacy limits
+Release builds should set `EXPO_PUBLIC_BUILD_ID` to an immutable release id. Keep
+the matching source maps in operator-controlled storage, never in the public app,
+the support bundle or a public upload endpoint.
+
+To map a scrubbed stack frame:
+
+1. Read `buildId` from the support bundle.
+2. Confirm the deployment and release channel match that build id.
+3. Fetch the matching source map from private operator storage.
+4. Map only the frame locations already stored in the diagnostic record.
+5. Never attach the map or a raw stack to a parent-facing report.
+
+There is no source-map upload API. If the build id is missing, treat the report
+as a stale or local build and ask for a fresh export.
+
+## 6. Purge one story's diagnostics
+
+Purge is admin-only, requires an explicit confirmation flag and deletes in
+bounded batches until the scope is empty:
+
+```bash
+cd frontend
+node scripts/diagnostics.mjs purge --story <storyId> --confirm
+```
+
+Only diagnostic operations and events for that private story are removed. The
+story, chapters, images and EPUB are untouched. Another story's diagnostics are
+not affected.
+
+## 7. Retention, quotas and privacy limits
 
 - Detailed server events: 7 days.
 - Operation summaries: 30 days.
 - Client buffer: 500 events or 256 KiB, in memory only (lost on reload).
 - Per-operation detail: 50 events; extra detail stays in console output.
+- Deployment defaults: 50,000 stored events, 10,000 summaries, 16 MiB of
+  diagnostic detail. Override with `DIAGNOSTIC_MAX_STORED_EVENTS`,
+  `DIAGNOSTIC_MAX_STORED_OPERATIONS` and `DIAGNOSTIC_MAX_STORED_BYTES`.
+- When the budget is reached, detail is dropped and `quota.dropped` increases;
+  console JSON remains the fallback. The budget applies to failures too.
+- Routine successes stay in console JSON; durable detail is failure-focused, so
+  there is no sampling pass to tune yet.
 - No automatic upload and no public trace route.
 
 `convex/crons.ts` runs `diagnostics:cleanupExpired` daily in bounded batches and
-reschedules itself while a batch is full. There is no admin purge by story scope
-yet; D3 adds that and deployment-wide quotas.
+reschedules itself while a batch is full. `health` reports expired rows still
+waiting for cleanup and the current quota counters.

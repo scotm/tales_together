@@ -183,7 +183,9 @@ it("restores the chapter retry control and error after a reload", async () => {
   const view = await render(<StoryScreen />);
   expect(view.getByText("Your choice is saved. Try again.")).toBeTruthy();
   await fireEvent.press(view.getByText("Try Chapter Again"));
-  expect(write).toHaveBeenCalledWith({ chapterId: "chapter_1" });
+  expect(write).toHaveBeenCalledWith(
+    expect.objectContaining({ chapterId: "chapter_1" }),
+  );
 });
 
 it("shows retry progress and prevents a second write after a reload", async () => {
@@ -230,7 +232,9 @@ it("shows export progress then offers retry when the saved export fails", async 
   await view.rerender(<StoryScreen />);
   expect(view.getByText("Your chapters are saved. Try again.")).toBeTruthy();
   await fireEvent.press(view.getByText("Try Download Again"));
-  expect(retry).toHaveBeenCalledWith({ storyId: "story_1" });
+  expect(retry).toHaveBeenCalledWith(
+    expect.objectContaining({ storyId: "story_1" }),
+  );
 });
 
 it("keeps a ready download available when saving the file fails", async () => {

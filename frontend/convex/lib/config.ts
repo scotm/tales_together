@@ -60,3 +60,24 @@ export const DIAGNOSTIC_EVENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const DIAGNOSTIC_SUMMARY_RETENTION_MS = 30 * 24 * 60 * 60_000;
 export const DIAGNOSTIC_MAX_EVENTS_PER_OPERATION = 50;
 export const DIAGNOSTIC_MAX_EVENTS_PER_CLEANUP = 200;
+export const DIAGNOSTIC_PURGE_BATCH = 200;
+export const DIAGNOSTIC_HEALTH_WINDOW_MS = 24 * 60 * 60_000;
+// Deployment-wide hard stop for durable detail. Critical events are dropped
+// too once the budget is reached; console JSON remains the fallback.
+function positiveEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+export const DIAGNOSTIC_MAX_STORED_EVENTS = positiveEnv(
+  "DIAGNOSTIC_MAX_STORED_EVENTS",
+  50_000,
+);
+export const DIAGNOSTIC_MAX_STORED_OPERATIONS = positiveEnv(
+  "DIAGNOSTIC_MAX_STORED_OPERATIONS",
+  10_000,
+);
+export const DIAGNOSTIC_MAX_STORED_BYTES = positiveEnv(
+  "DIAGNOSTIC_MAX_STORED_BYTES",
+  16 * 1024 * 1024,
+);

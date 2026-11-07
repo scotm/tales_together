@@ -59,7 +59,12 @@ export function redactOrigin(origin: string | undefined): string | undefined {
 
 /** Support bundles never carry story capabilities, prompts or content. */
 export function sanitizeEvent(event: DiagnosticEvent): DiagnosticEvent {
-  const { storyId: _storyId, chapterId: _chapterId, ...safe } = event;
+  const {
+    storyId: _storyId,
+    chapterId: _chapterId,
+    traceId: _traceId,
+    ...safe
+  } = event;
   return {
     ...safe,
     message: safe.message
@@ -126,6 +131,9 @@ export function supportSummary(bundle: SupportBundle): string {
         `Check ${check.name}: ${check.status}${check.detail ? ` · ${check.detail}` : ""}`,
     ),
     `Events: ${bundle.events.length}`,
+    bundle.operations.length > 0
+      ? `Operations: ${bundle.operations.slice(-10).join(", ")}`
+      : "Operations: none recorded",
     ...bundle.events
       .slice(-8)
       .map(

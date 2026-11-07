@@ -220,6 +220,7 @@ export default defineSchema({
   })
     .index("by_operation", ["operationId"])
     .index("by_story_started", ["storyId", "startedAt"])
+    .index("by_status_started", ["status", "startedAt"])
     .index("by_started", ["startedAt"])
     .index("by_expires", ["expiresAt"]),
 
@@ -251,8 +252,19 @@ export default defineSchema({
     timestamp: v.number(),
     createdAt: v.number(),
     expiresAt: v.number(),
+    bytes: v.optional(v.number()),
   })
     .index("by_event", ["eventId"])
     .index("by_operation_sequence", ["operationId", "sequence"])
+    .index("by_story_timestamp", ["storyId", "timestamp"])
     .index("by_expires", ["expiresAt"]),
+
+  diagnosticQuota: defineTable({
+    key: v.string(),
+    events: v.number(),
+    operations: v.number(),
+    bytes: v.number(),
+    dropped: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
 });

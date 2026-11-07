@@ -61,6 +61,8 @@ export const recompress = internalAction({
       parentOperationId: diagnostics?.parentOperationId,
       runId: diagnostics?.runId,
       scheduledAt: diagnostics?.scheduledAt,
+      storyId: diagnostics?.storyId,
+      chapterId: diagnostics?.chapterId,
       purpose: "compression",
     });
     await diag.start();

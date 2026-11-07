@@ -15,7 +15,7 @@ targets, not existing code. Check `frontend/` before building on them.
 - `frontend/` — Expo app. Routes in `src/app/` (Expo Router); Convex functions in `convex/`; shared
   code in `src/lib/`. Runs on web, iOS and Android via React Native Web.
 - `frontend/convex/schema.ts` — the only source of truth for the data model. `stories`, `characters`,
-  `chapters`, `diagnosticOperations`, `diagnosticEvents`.
+  `chapters`, `diagnosticOperations`, `diagnosticEvents`, `diagnosticQuota`.
 - `design/cover_image/` — standalone SVG cover templates and `generate_cover_image.py`; not wired
   into the app, and its extras (lxml, resvg, TTF fonts) are not installed.
 - `docs/` — product, prompt, backend and EPUB design, plus `decisions.md`.

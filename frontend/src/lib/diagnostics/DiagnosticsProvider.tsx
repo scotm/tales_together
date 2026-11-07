@@ -34,7 +34,7 @@ export interface DiagnosticsApi {
   sessionId: string;
   environment: string;
   record(name: string, fields?: EventFields): DiagnosticEvent | null;
-  track<T>(name: string, run: () => Promise<T>): Promise<T>;
+  track<T>(name: string, run: (operationId: string) => Promise<T>): Promise<T>;
   events(): DiagnosticEvent[];
   clear(): void;
   connection: ConnectionSummary;
@@ -66,7 +66,7 @@ const noop: DiagnosticsApi = {
   sessionId: "unknown",
   environment: "unknown",
   record: () => null,
-  track: (_name, run) => run(),
+  track: (_name, run) => run("client-unknown"),
   events: () => [],
   clear: () => {},
   connection: emptyConnection,
@@ -124,14 +124,23 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
   );
 
   const track = useCallback(
-    async <T,>(name: string, run: () => Promise<T>): Promise<T> => {
+    async <T,>(
+      name: string,
+      run: (operationId: string) => Promise<T>,
+    ): Promise<T> => {
       const startedAt = Date.now();
-      record("operation.started", { status: "started", stage: name });
+      const operationId = createEventId("client");
+      record("operation.started", {
+        status: "started",
+        stage: name,
+        operationId,
+      });
       try {
-        const result = await run();
+        const result = await run(operationId);
         record("operation.succeeded", {
           status: "succeeded",
           stage: name,
+          operationId,
           durationMs: Date.now() - startedAt,
         });
         return result;
@@ -141,6 +150,7 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
           level: "error",
           status: "failed",
           stage: name,
+          operationId,
           durationMs: Date.now() - startedAt,
           errorCode: classified.code,
           message: classified.safeMessage,

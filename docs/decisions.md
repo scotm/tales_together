@@ -211,12 +211,16 @@ reach; Convex summaries keep enough evidence after the console log rotates.
 - Only critical events are persisted (failures, warnings, retries, degraded/recovered/superseded
   terminals); routine starts and successful provider results stay in console JSON. The per-operation
   cap is 50 events.
+- Client-generated operation ids are labels passed to public actions so a support report can be joined
+  to a server trace. They never authorize a state change, and an invalid label is ignored. Server
+  trace ids still come from the story.
 - A handled cover failure is an `export.degraded` event and a `cover` summary with status `degraded`;
   the EPUB build still reports success.
 - Client support bundles strip story/chapter ids and redact private hosts. The on-device panel shows
   the full local origin so a developer can debug it.
-- D3 quotas, purge-by-story and source-map runbook, and D4 (receipt reconciliation, rollups, alerts)
-  remain planned. A daily bounded `cleanupExpired` job deletes rows past `expiresAt`.
+- D3 is implemented: paginated trace/recent, `diagnostics:health`, admin purge by story, daily
+  bounded retention cleanup and a deployment-wide event/summary/byte quota. D4 (receipt
+  reconciliation, rollups, alerts) remains planned.
 
 **Revisit when:** real incidents show a missing event, retention needs a cleanup job, or provider
 spend needs reconciliation rather than sampled receipts.

@@ -26,6 +26,8 @@ export const diagnosticContext = v.object({
   parentOperationId: v.optional(v.string()),
   runId: v.optional(v.string()),
   scheduledAt: v.optional(v.number()),
+  storyId: v.optional(v.id("stories")),
+  chapterId: v.optional(v.id("chapters")),
 });
 
 export type DiagnosticContext = {
@@ -34,6 +36,8 @@ export type DiagnosticContext = {
   parentOperationId?: string;
   runId?: string;
   scheduledAt?: number;
+  storyId?: Id<"stories">;
+  chapterId?: Id<"chapters">;
 };
 
 type DiagnosticMutationCtx = Pick<ActionCtx, "runMutation">;
@@ -46,8 +50,8 @@ export interface DiagnosticOptions {
   parentOperationId?: string;
   runId?: string;
   scheduledAt?: number;
-  storyId?: string;
-  chapterId?: string;
+  storyId?: Id<"stories">;
+  chapterId?: Id<"chapters">;
   provider?: string;
   model?: string;
   purpose?: string;
@@ -101,6 +105,9 @@ export function createDiagnostics(
     operationId,
     parentOperationId: options.parentOperationId,
     runId: options.runId,
+    scheduledAt: options.scheduledAt,
+    storyId: options.storyId,
+    chapterId: options.chapterId,
   };
   const startedAt = Date.now();
   let finished = false;
@@ -328,6 +335,8 @@ export function createDiagnostics(
         parentOperationId: operationId,
         runId,
         scheduledAt: Date.now(),
+        storyId: options.storyId,
+        chapterId: options.chapterId,
       };
     },
   };
@@ -337,6 +346,13 @@ export function createDiagnostics(
 
 export function operationIdFor(kind: string, runId: string): string {
   return `${kind}-${runId}`;
+}
+
+const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+/** Client ids are labels only; they never authorize a state change. */
+export function safeOperationId(value: string | undefined): string | undefined {
+  return value && ID_PATTERN.test(value) ? value : undefined;
 }
 
 export function traceIdFor(story: { _id: string; traceId?: string }): string {

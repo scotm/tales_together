@@ -64,9 +64,9 @@ for each. Start here when picking up work.
 
 **[Application diagnostics plan](./07-application-diagnostics-plan.md)** — proposed
 operation timelines, provider-attempt logging, offline support reports, private
-inspection, retention and cost evidence, delivered in five slices. D0–D2 are
+inspection, retention and cost evidence, delivered in five slices. D0–D3 are
 implemented; see the **[diagnostics runbook](./diagnostics-runbook.md)** for
-collecting a report, finding a trace and interpreting retries.
+collecting a report, finding a trace, health checks, purge and retries.
 
 **[Design notes](./design/)** — `asset-backlog.md` (graphics still needed, already v0-scoped) and
 `figcraft.md` (how to drive the FigCraft source build).

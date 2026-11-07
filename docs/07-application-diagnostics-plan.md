@@ -1,9 +1,8 @@
 # 07 — Application diagnostics plan
 
-Status: D0–D2 implemented 2026-11-07, plus the D3 daily retention cleanup; D3
-quotas/purge and D4 remain planned. No external diagnostics collector is
-implemented by this document. File references below describe the current code;
-new modules, tables and commands are explicitly proposed.
+Status: D0–D3 implemented 2026-11-07; D4 remains planned. No external diagnostics
+collector is implemented by this document. File references below describe the
+current code; new modules, tables and commands are explicitly proposed.
 
 ## Outcome
 

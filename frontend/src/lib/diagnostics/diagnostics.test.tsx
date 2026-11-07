@@ -27,6 +27,7 @@ it("exports a support bundle without story capabilities or private hosts", () =>
     source: "web",
     storyId: "story_capability",
     chapterId: "chapter_capability",
+    traceId: "trace_capability",
     message: "fetch failed for https://example.test/story",
   });
   if (!event) throw new Error("event rejected");
@@ -53,6 +54,7 @@ it("exports a support bundle without story capabilities or private hosts", () =>
   });
   expect(bundle.events[0]).not.toHaveProperty("storyId");
   expect(bundle.events[0]).not.toHaveProperty("chapterId");
+  expect(bundle.events[0]).not.toHaveProperty("traceId");
   expect(bundle.events[0]?.message).not.toContain("example.test");
   expect(bundle.connection.effectiveOrigin).toBe("http://<private-host>");
   expect(redactOrigin("https://story.example.com")).toBe(

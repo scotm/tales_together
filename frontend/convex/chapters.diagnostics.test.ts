@@ -83,12 +83,16 @@ test("an injected provider failure reconstructs retries, the final error and the
       .mockImplementation(async () => new Response("busy", { status: 503 })),
   );
   const failure = expect(
-    t.action(api.chapters.writeChapter, { chapterId }),
+    t.action(api.chapters.writeChapter, {
+      chapterId,
+      clientOperationId: "client-write-1",
+    }),
   ).rejects.toThrow(/choice is saved/);
   await failure;
 
   const { operations, events } = await diagnostics(t);
   const write = operations.find((operation) => operation.name === "write");
+  expect(write?.operationId).toBe("client-write-1");
   expect(write?.status).toBe("failed");
   expect(write?.errorCode).toBe("PROVIDER_HTTP_ERROR");
   expect(write?.attempts).toBe(4);

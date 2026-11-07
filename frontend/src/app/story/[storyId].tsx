@@ -80,8 +80,11 @@ export default function StoryScreen() {
     setPitching(true);
     setError(null);
     try {
-      await diagnostics.track("chapters.pitch", () =>
-        pitchChapter({ chapterId: chapter._id }),
+      await diagnostics.track("chapters.pitch", (operationId) =>
+        pitchChapter({
+          chapterId: chapter._id,
+          clientOperationId: operationId,
+        }),
       );
     } catch (cause) {
       setError(
@@ -109,8 +112,11 @@ export default function StoryScreen() {
     setLocking(true);
     setError(null);
     try {
-      await diagnostics.track("chapters.lock", () =>
-        lockChapter({ chapterId: chapter._id }),
+      await diagnostics.track("chapters.lock", (operationId) =>
+        lockChapter({
+          chapterId: chapter._id,
+          clientOperationId: operationId,
+        }),
       );
     } catch (cause) {
       setError(
@@ -126,8 +132,11 @@ export default function StoryScreen() {
     setWriting(true);
     setError(null);
     try {
-      await diagnostics.track("chapters.write", () =>
-        writeChapter({ chapterId: chapter._id }),
+      await diagnostics.track("chapters.write", (operationId) =>
+        writeChapter({
+          chapterId: chapter._id,
+          clientOperationId: operationId,
+        }),
       );
     } catch {
       setError(
@@ -142,8 +151,11 @@ export default function StoryScreen() {
     setQueuingExport(true);
     setError(null);
     try {
-      await diagnostics.track("export.retry", () =>
-        retryExport({ storyId: storyId as Id<"stories"> }),
+      await diagnostics.track("export.retry", (operationId) =>
+        retryExport({
+          storyId: storyId as Id<"stories">,
+          clientOperationId: operationId,
+        }),
       );
     } catch {
       setError("We couldn't prepare the download. Try again.");

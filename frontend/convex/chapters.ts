@@ -17,6 +17,7 @@ import {
   type DiagnosticContext,
   diagnosticContext,
   operationIdFor,
+  safeOperationId,
   traceIdFor,
 } from "./lib/diagnostics";
 import { type ParsedBeatCard, parseBeatPitch } from "./llm/beatCards";
@@ -108,6 +109,7 @@ async function runPitch(
   ctx: ActionCtx,
   chapterId: Id<"chapters">,
   context?: DiagnosticContext,
+  clientOperationId?: string,
 ): Promise<ParsedBeatCard[]> {
   const { story, chapter, characters, prior } = await ctx.runQuery(
     internal.chapters.getChapterContext,
@@ -117,7 +119,7 @@ async function runPitch(
   const diag = createDiagnostics(ctx, {
     name: "pitch",
     traceId: context?.traceId ?? traceIdFor(story),
-    operationId: context?.operationId,
+    operationId: context?.operationId ?? safeOperationId(clientOperationId),
     parentOperationId: context?.parentOperationId,
     runId: context?.runId,
     scheduledAt: context?.scheduledAt,
@@ -210,8 +212,12 @@ async function runPitch(
 }
 
 export const pitchChapter = action({
-  args: { chapterId: v.id("chapters") },
-  handler: (ctx, { chapterId }) => runPitch(ctx, chapterId),
+  args: {
+    chapterId: v.id("chapters"),
+    clientOperationId: v.optional(v.string()),
+  },
+  handler: (ctx, { chapterId, clientOperationId }) =>
+    runPitch(ctx, chapterId, undefined, clientOperationId),
 });
 
 /** Only internal functions may be scheduled; same body as the client call. */
@@ -387,8 +393,11 @@ function splitParagraphs(raw: string): string[] {
  * check before strangers can press the button.
  */
 export const writeChapter = action({
-  args: { chapterId: v.id("chapters") },
-  handler: async (ctx, { chapterId }): Promise<string[]> => {
+  args: {
+    chapterId: v.id("chapters"),
+    clientOperationId: v.optional(v.string()),
+  },
+  handler: async (ctx, { chapterId, clientOperationId }): Promise<string[]> => {
     const { story, chapter, characters, prior } = await ctx.runQuery(
       internal.chapters.getChapterContext,
       { chapterId },
@@ -412,7 +421,8 @@ export const writeChapter = action({
     const diag = createDiagnostics(ctx, {
       name: "write",
       traceId: traceIdFor(story),
-      operationId: operationIdFor("write", runId),
+      operationId:
+        safeOperationId(clientOperationId) ?? operationIdFor("write", runId),
       runId,
       storyId: story._id,
       chapterId,
@@ -753,8 +763,11 @@ export const extractChapter = internalAction({
  * the story to IN_PROGRESS on the first chapter and COMPLETED on the last.
  */
 export const lockChapter = mutation({
-  args: { chapterId: v.id("chapters") },
-  handler: async (ctx, { chapterId }) => {
+  args: {
+    chapterId: v.id("chapters"),
+    clientOperationId: v.optional(v.string()),
+  },
+  handler: async (ctx, { chapterId, clientOperationId }) => {
     const chapter = await ctx.db.get(chapterId);
     if (!chapter) throw new Error("chapter not found");
     if (chapter.status === "LOCKED") return;
@@ -782,7 +795,8 @@ export const lockChapter = mutation({
         chapterId,
         diagnostics: {
           traceId: traceIdFor(story),
-          operationId: createEventId("extract"),
+          operationId:
+            safeOperationId(clientOperationId) ?? createEventId("extract"),
           scheduledAt: Date.now(),
         },
       });
