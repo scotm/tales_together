@@ -4,6 +4,8 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { action, internalAction } from "../_generated/server";
+import { decodeBase64 } from "../llm/image";
+import { FONT_FILES } from "./assets";
 import {
   type ManifestItem,
   renderChapter,
@@ -48,6 +50,15 @@ async function runBuild(
 
   const manifest: ManifestItem[] = [];
   const spine = ["titlepage"];
+
+  for (const font of FONT_FILES) {
+    add(`OEBPS/fonts/${font.filename}`, decodeBase64(font.base64));
+    manifest.push({
+      id: font.id,
+      href: `fonts/${font.filename}`,
+      mediaType: "font/woff2",
+    });
+  }
 
   if (story.coverFileId) {
     add("OEBPS/images/cover.jpg", await read(story.coverFileId));
@@ -95,7 +106,7 @@ async function runBuild(
     renderTitlepage({
       title: story.title,
       setting: story.worldState.setting,
-      hasCover: Boolean(story.coverFileId),
+      authorName: story.authorName,
     }),
   );
   add("OEBPS/nav.xhtml", renderNav(ordered));
@@ -104,6 +115,7 @@ async function runBuild(
     renderContentOpf({
       storyId: story._id,
       title: story.title,
+      creator: story.authorName,
       createdAt: story.createdAt,
       manifest,
       spine,

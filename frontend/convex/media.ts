@@ -36,6 +36,9 @@ export function coverRequest(input: {
   return [
     hero,
     `Setting: ${input.setting}.`,
+    "Portrait orientation, 2:3. Keep the top third and bottom sixth calm,",
+    "with only soft background, so a title and author credit can be added.",
+    "Leave all lettering off the art; it is composited later.",
     `Style: ${input.artStyle}.`,
     NO_TEXT,
   ].join(" ");
@@ -98,16 +101,23 @@ export const illustrateCover = internalAction({
             heroVisualDescription: story.heroVisualDescription,
             artStyle: story.artStyle,
           }),
-          aspectRatio: "4:3",
+          aspectRatio: "2:3",
         });
 
         const original = await ctx.storage.store(
           new Blob([image.bytes], { type: image.contentType }),
         );
-        const fileId = await ctx.runAction(internal.mediaNode.recompress, {
-          fileId: original,
-        });
-        if (fileId !== original) await ctx.storage.delete(original);
+        let fileId = original;
+        try {
+          fileId = await ctx.runAction(internal.cover.rasterize.composeCover, {
+            storyId,
+            artFileId: original,
+          });
+          if (fileId !== original) await ctx.storage.delete(original);
+        } catch (cause) {
+          // A cover without lettering beats no cover at all.
+          console.error("cover typography failed", cause);
+        }
 
         await ctx.runMutation(internal.stories.setCover, { storyId, fileId });
       }

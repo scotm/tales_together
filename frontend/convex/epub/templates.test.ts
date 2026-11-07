@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FONT_FILES } from "./assets";
 import {
   escapeHtml,
   renderChapter,
@@ -46,6 +47,7 @@ describe("epub templates", () => {
     const opf = renderContentOpf({
       storyId: "story_1",
       title: "The Windy Kite",
+      creator: "Mira",
       createdAt: Date.UTC(2026, 10, 5, 12, 0, 0),
       manifest: [
         {
@@ -72,6 +74,7 @@ describe("epub templates", () => {
     expect(opf).toContain(
       '<meta property="dcterms:modified">2026-11-05T12:00:00Z</meta>',
     );
+    expect(opf).toContain("<dc:creator>Mira</dc:creator>");
   });
 
   it("builds a table of contents for every chapter", () => {
@@ -85,21 +88,35 @@ describe("epub templates", () => {
     expect(nav).toContain('epub:type="toc"');
   });
 
-  it("renders a title page with or without a cover", () => {
-    expect(
-      renderTitlepage({ title: "Book", setting: "Sea", hasCover: true }),
-    ).toContain("../images/cover.jpg");
-    expect(
-      renderTitlepage({ title: "Book", setting: "Sea", hasCover: false }),
-    ).not.toContain("cover.jpg");
+  it("keeps the cover out of the title page and prints its credit", () => {
+    const page = renderTitlepage({
+      title: "Book",
+      setting: "Sea",
+      authorName: "Mira <Mouse>",
+    });
+
+    expect(page).not.toContain("cover.jpg");
+    expect(page).toContain("An Original Interactive Storybook");
+    expect(page).toContain("by Mira &lt;Mouse&gt;");
+    expect(renderTitlepage({ title: "Book", setting: "Sea" })).toContain(
+      "by A Young Author",
+    );
   });
 
   it("escapes the title in the title page", () => {
     expect(escapeHtml("<Book>")).toBe("&lt;Book&gt;");
   });
 
-  it("keeps the stylesheet free of remote fonts", () => {
+  it("embeds the storybook fonts instead of fetching them", () => {
+    expect(STORYBOOK_CSS).toContain("@font-face");
+    expect(STORYBOOK_CSS).toContain("Lexend-Regular.woff2");
+    expect(STORYBOOK_CSS).toContain("Fraunces-Bold.woff2");
     expect(STORYBOOK_CSS).not.toContain("@import");
     expect(STORYBOOK_CSS).not.toContain("http");
+    expect(FONT_FILES.map((font) => font.filename)).toEqual([
+      "Lexend-Regular.woff2",
+      "Fraunces-Bold.woff2",
+    ]);
+    expect(FONT_FILES.every((font) => font.base64.length > 0)).toBe(true);
   });
 });

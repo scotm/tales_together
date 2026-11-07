@@ -445,8 +445,9 @@ queries already model chapter status and media readiness. One schema, one langua
 binaries or runs longer than an action allows; use FFmpeg Micro only if we never add a second
 binary-dependent job.
 
-**Why:** Convex actions cover LLM calls, video polling and EPUB zipping. FFmpeg and `resvg`
-rasterisation need real binaries, which Convex does not provide.
+**Why:** Convex actions cover LLM calls, video polling and EPUB zipping. FFmpeg needs a real binary,
+which Convex does not provide; `resvg` has a wasm build that does run in a Node action (see "Cover
+typography + embedded fonts").
 
 **Gotchas — FFmpeg Micro** (verified against https://www.ffmpeg-micro.com/docs on 2026-10-27):
 
@@ -497,3 +498,34 @@ self-hosting, or a Python-only requirement are non-negotiable.
 
 **Revisit when:** the first real feature (story creation or chapter generation) is about to be
 written — not after models and endpoints exist.
+
+---
+
+## Cover typography + embedded fonts — accepted, 2026-11-07
+
+**Decision:**
+
+- Covers are generated as portrait 2:3 art (`aspectRatio: "2:3"`), then title and typed author credit
+  are composited on top as SVG → JPEG at 1600×2400. The model still paints no text.
+- Rasterisation runs in a `"use node"` action with `@resvg/resvg-wasm` (not the native
+  `@resvg/resvg-js`), `jpeg-js`, and the same Fraunces/Lexend faces as the book. The wasm and TTF
+  bytes are inlined by `npm run epub:assets`; Convex cannot read the filesystem.
+- EPUB 3 embeds subset Lexend/Fraunces WOFF2 with `@font-face`; both files are in the manifest. The
+  OFL licences live beside the source fonts in `frontend/assets/fonts/`.
+- The title page and `dc:creator` use `story.authorName`, falling back to "A Young Author".
+
+**Why:** the planned cover needed crisp, editable type and a typed credit; leaving the title to the
+image model is how you get garbled lettering. `sharp` cannot load in Convex, but the wasm build of
+resvg does run in a Node action, so no external rasteriser service is needed.
+
+**Gotchas:**
+
+- The wasm is ~2.5 MB raw / ~1.3 MB gzipped base64 in the bundle. Keep it in the Node bundle only;
+  never import `cover/rasterize.ts` from a V8 module.
+- Convex Node actions take storage ids, not image bytes (5 MiB argument cap).
+- If composition fails, the raw portrait art is stored as the cover so the EPUB still builds.
+- Font files are downloaded, not generated: replace `frontend/assets/fonts/` then rerun
+  `npm run epub:assets`.
+
+**Revisit when:** a reader rejects the wasm-rendered JPEG, or the model's 1K portrait output is too
+soft at 1600 px.

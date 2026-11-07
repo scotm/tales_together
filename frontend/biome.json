@@ -13,6 +13,7 @@
       "!**/dist",
       "!**/coverage",
       "!**/convex/_generated",
+      "!**/convex/*/assets.ts",
       "!**/expo-env.d.ts",
       "!**/assets/expo.icon"
     ]

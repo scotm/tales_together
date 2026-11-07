@@ -41,6 +41,7 @@ export const create = mutation({
     protagonistName: v.string(),
     protagonistQuirk: v.string(),
     visualDescription: v.string(),
+    authorName: v.optional(v.string()),
     backpackItems: v.array(v.object({ id: v.string(), name: v.string() })),
   },
   handler: async (ctx, args) => {
@@ -48,6 +49,7 @@ export const create = mutation({
     if (!args.title.trim() || !args.protagonistName.trim()) {
       throw new Error("a story needs a title and a hero name");
     }
+    const authorName = args.authorName?.trim();
 
     const storyId = await ctx.db.insert("stories", {
       title: args.title,
@@ -66,6 +68,7 @@ export const create = mutation({
         name: item.name,
         status: "IN_BACKPACK" as const,
       })),
+      ...(authorName ? { authorName } : {}),
       createdAt: Date.now(),
     });
 
