@@ -6,7 +6,15 @@ interface InlineData {
 }
 
 interface ImageResponse {
-  candidates?: { content?: { parts?: { inlineData?: InlineData }[] } }[];
+  candidates?: {
+    content?: { parts?: { inlineData?: InlineData }[] };
+    finishReason?: string;
+  }[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message?: string };
 }
 
@@ -94,6 +102,21 @@ export function createGeminiImageGenerator(options: {
     const inline = payload.candidates?.[0]?.content?.parts?.find(
       (part) => part.inlineData?.data,
     )?.inlineData;
+
+    try {
+      await progress?.onResult?.({
+        usage: payload.usageMetadata
+          ? {
+              inputTokens: payload.usageMetadata.promptTokenCount,
+              outputTokens: payload.usageMetadata.candidatesTokenCount,
+              totalTokens: payload.usageMetadata.totalTokenCount,
+            }
+          : undefined,
+        finishReason: payload.candidates?.[0]?.finishReason,
+      });
+    } catch {
+      // Receipt collection must not change provider behaviour.
+    }
 
     if (!inline?.data) {
       throw new Error("image returned no bytes");

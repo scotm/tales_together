@@ -8,7 +8,15 @@ interface GeminiPart {
 }
 
 interface GeminiResponse {
-  candidates?: { content?: { parts?: GeminiPart[] } }[];
+  candidates?: {
+    content?: { parts?: GeminiPart[] };
+    finishReason?: string;
+  }[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message?: string };
 }
 
@@ -66,6 +74,21 @@ export function createGeminiProvider(options: {
         ?.filter((part) => !part.thought)
         .map((part) => part.text ?? "")
         .join("");
+
+      try {
+        await progress?.onResult?.({
+          usage: payload.usageMetadata
+            ? {
+                inputTokens: payload.usageMetadata.promptTokenCount,
+                outputTokens: payload.usageMetadata.candidatesTokenCount,
+                totalTokens: payload.usageMetadata.totalTokenCount,
+              }
+            : undefined,
+          finishReason: payload.candidates?.[0]?.finishReason,
+        });
+      } catch {
+        // Receipt collection must not change provider behaviour.
+      }
 
       if (!text) {
         throw new Error("gemini returned no text");

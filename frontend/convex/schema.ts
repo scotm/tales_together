@@ -34,6 +34,47 @@ export const retryProgress = v.object({
   nextRetryAt: v.number(),
 });
 
+export const diagnosticLevel = v.union(
+  v.literal("debug"),
+  v.literal("info"),
+  v.literal("warn"),
+  v.literal("error"),
+);
+
+export const diagnosticSource = v.union(
+  v.literal("web"),
+  v.literal("ios"),
+  v.literal("android"),
+  v.literal("convex"),
+  v.literal("node"),
+);
+
+export const diagnosticStatus = v.union(
+  v.literal("started"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("degraded"),
+  v.literal("skipped"),
+  v.literal("superseded"),
+  v.literal("recovered"),
+);
+
+export const diagnosticUsage = v.object({
+  inputTokens: v.optional(v.number()),
+  outputTokens: v.optional(v.number()),
+  totalTokens: v.optional(v.number()),
+  costMicroUsd: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  costBasis: v.optional(
+    v.union(
+      v.literal("reported"),
+      v.literal("estimated"),
+      v.literal("settled"),
+      v.literal("unknown"),
+    ),
+  ),
+});
+
 export const exportStatus = v.union(
   v.literal("PREPARING_COVER"),
   v.literal("BUILDING"),
@@ -101,6 +142,7 @@ export default defineSchema({
     ),
     coverFileId: v.optional(v.id("_storage")),
     epubFileId: v.optional(v.id("_storage")),
+    traceId: v.optional(v.string()),
     exportStatus: v.optional(exportStatus),
     exportRunId: v.optional(v.string()),
     exportStartedAt: v.optional(v.number()),
@@ -150,4 +192,67 @@ export default defineSchema({
   })
     .index("by_story", ["storyId", "index"])
     .index("by_story_status", ["storyId", "status"]),
+
+  // Bounded operation summaries and the important transitions inside them.
+  // Detailed provider attempts stay in JSON console lines.
+  diagnosticOperations: defineTable({
+    operationId: v.string(),
+    traceId: v.optional(v.string()),
+    parentOperationId: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    name: v.string(),
+    source: diagnosticSource,
+    storyId: v.optional(v.id("stories")),
+    chapterId: v.optional(v.id("chapters")),
+    status: diagnosticStatus,
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    errorCode: v.optional(v.string()),
+    safeMessage: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    model: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    attempts: v.optional(v.number()),
+    retries: v.optional(v.number()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_operation", ["operationId"])
+    .index("by_story_started", ["storyId", "startedAt"])
+    .index("by_started", ["startedAt"])
+    .index("by_expires", ["expiresAt"]),
+
+  diagnosticEvents: defineTable({
+    eventId: v.string(),
+    operationId: v.optional(v.string()),
+    traceId: v.optional(v.string()),
+    parentOperationId: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    name: v.string(),
+    level: diagnosticLevel,
+    source: diagnosticSource,
+    sequence: v.number(),
+    stage: v.optional(v.string()),
+    status: v.optional(diagnosticStatus),
+    errorCode: v.optional(v.string()),
+    safeMessage: v.optional(v.string()),
+    retryable: v.optional(v.boolean()),
+    durationMs: v.optional(v.number()),
+    provider: v.optional(v.string()),
+    model: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    httpStatus: v.optional(v.number()),
+    requestId: v.optional(v.string()),
+    attempt: v.optional(v.number()),
+    usage: v.optional(diagnosticUsage),
+    storyId: v.optional(v.id("stories")),
+    chapterId: v.optional(v.id("chapters")),
+    timestamp: v.number(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_operation_sequence", ["operationId", "sequence"])
+    .index("by_expires", ["expiresAt"]),
 });

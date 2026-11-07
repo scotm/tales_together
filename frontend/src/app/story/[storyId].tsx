@@ -1,7 +1,12 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { useAction, useMutation, useQuery } from "convex/react";
-import { useLocalSearchParams } from "expo-router";
+import {
+  useAction,
+  useConvexConnectionState,
+  useMutation,
+  useQuery,
+} from "convex/react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,13 +18,19 @@ import {
   Text,
   View,
 } from "react-native";
+import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
+import { useQueryDiagnostics } from "@/lib/diagnostics/query";
 import { bookDeliveryLabel, saveBook } from "@/lib/saveBook";
 
 export default function StoryScreen() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
+  const router = useRouter();
+  const diagnostics = useDiagnostics();
+  const connection = useConvexConnectionState();
   const story = useQuery(api.stories.get, {
     storyId: storyId as Id<"stories">,
   });
+  useQueryDiagnostics("stories.get", story, connection.isWebSocketConnected);
   const pitchChapter = useAction(api.chapters.pitchChapter);
   const writeChapter = useAction(api.chapters.writeChapter);
   const chooseBeat = useMutation(api.chapters.chooseBeat);
@@ -69,7 +80,9 @@ export default function StoryScreen() {
     setPitching(true);
     setError(null);
     try {
-      await pitchChapter({ chapterId: chapter._id });
+      await diagnostics.track("chapters.pitch", () =>
+        pitchChapter({ chapterId: chapter._id }),
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not deal the cards",
@@ -83,7 +96,9 @@ export default function StoryScreen() {
     if (!chapter) return;
     setError(null);
     try {
-      await chooseBeat({ chapterId: chapter._id, cardId });
+      await diagnostics.track("chapters.chooseBeat", () =>
+        chooseBeat({ chapterId: chapter._id, cardId }),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not pick");
     }
@@ -94,7 +109,9 @@ export default function StoryScreen() {
     setLocking(true);
     setError(null);
     try {
-      await lockChapter({ chapterId: chapter._id });
+      await diagnostics.track("chapters.lock", () =>
+        lockChapter({ chapterId: chapter._id }),
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not turn the page",
@@ -109,7 +126,9 @@ export default function StoryScreen() {
     setWriting(true);
     setError(null);
     try {
-      await writeChapter({ chapterId: chapter._id });
+      await diagnostics.track("chapters.write", () =>
+        writeChapter({ chapterId: chapter._id }),
+      );
     } catch {
       setError(
         "We couldn't finish this chapter. Your choice is saved. Try again.",
@@ -123,7 +142,9 @@ export default function StoryScreen() {
     setQueuingExport(true);
     setError(null);
     try {
-      await retryExport({ storyId: storyId as Id<"stories"> });
+      await diagnostics.track("export.retry", () =>
+        retryExport({ storyId: storyId as Id<"stories"> }),
+      );
     } catch {
       setError("We couldn't prepare the download. Try again.");
     } finally {
@@ -136,7 +157,14 @@ export default function StoryScreen() {
     setSaving(true);
     setError(null);
     try {
-      await saveBook(story.story.epubUrl, story.story.title);
+      await diagnostics.track("delivery.save_book", () =>
+        saveBook(
+          story.story.epubUrl as string,
+          story.story.title,
+          (stage, fields) =>
+            diagnostics.record(`delivery.${stage}`, fields ?? {}),
+        ),
+      );
     } catch {
       setError("We couldn't save the book. Your download is ready; try again.");
     } finally {
@@ -147,6 +175,13 @@ export default function StoryScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/diagnostics")}
+          style={styles.help}
+        >
+          <Text style={styles.helpLabel}>Help &amp; diagnostics</Text>
+        </Pressable>
         {story.story.coverUrl ? (
           <Image
             accessibilityLabel="Book cover"
@@ -386,6 +421,8 @@ export default function StoryScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#FDF6E3", padding: 24 },
   content: { gap: 12, maxWidth: 720, width: "100%", alignSelf: "center" },
+  help: { alignSelf: "flex-start", paddingVertical: 4 },
+  helpLabel: { fontSize: 15, color: "#92400E" },
   title: { fontSize: 28, fontWeight: "800", color: "#1F1A17" },
   cover: {
     width: "100%",

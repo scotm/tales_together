@@ -7,6 +7,7 @@ import {
   mutation,
 } from "./_generated/server";
 import { GENERATION_LEASE_MS } from "./lib/config";
+import { operationIdFor } from "./lib/diagnostics";
 import { retryProgress } from "./schema";
 
 const stages = v.union(v.literal("PREPARING_COVER"), v.literal("BUILDING"));
@@ -153,6 +154,14 @@ export const expire = internalMutation({
       exportRetry: undefined,
       exportError:
         "Preparing the download was interrupted. Your chapters are saved. Try again.",
+    });
+    await ctx.scheduler.runAfter(0, internal.diagnostics.noteOperation, {
+      operationId: operationIdFor("export", runId),
+      name: "export.watchdog",
+      status: "recovered",
+      stage: "export_watchdog",
+      errorCode: "EXPORT_WATCHDOG_RECOVERED",
+      safeMessage: "The export watchdog released the interrupted job.",
     });
   },
 });

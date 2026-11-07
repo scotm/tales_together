@@ -5,6 +5,12 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { action, internalAction } from "../_generated/server";
 import {
+  createDiagnostics,
+  type DiagnosticContext,
+  diagnosticContext,
+  operationIdFor,
+} from "../lib/diagnostics";
+import {
   type ManifestItem,
   renderChapter,
   renderContainer,
@@ -22,7 +28,12 @@ async function runBuild(
   ctx: ActionCtx,
   storyId: Id<"stories">,
   runId: string,
-): Promise<Id<"_storage">> {
+): Promise<{
+  fileId: Id<"_storage">;
+  bytes: number;
+  imageCount: number;
+  chapterCount: number;
+}> {
   const { story, chapters } = await ctx.runQuery(
     internal.stories.getForExport,
     { storyId },
@@ -38,9 +49,14 @@ async function runBuild(
       createFolders: false,
     });
   };
-  const read = async (id: Id<"_storage">) => {
+  const read = async (id: Id<"_storage">, kind: string) => {
     const blob = await ctx.storage.get(id);
-    if (!blob) throw new Error(`missing storage file ${id}`);
+    if (!blob) {
+      const error = new Error(`missing storage file ${id}`);
+      // The category travels with the error; the file id never reaches a log.
+      (error as Error & { missingAsset?: string }).missingAsset = kind;
+      throw error;
+    }
     return new Uint8Array(await blob.arrayBuffer());
   };
 
@@ -53,7 +69,7 @@ async function runBuild(
   const spine = ["titlepage"];
 
   if (story.coverFileId) {
-    add("OEBPS/images/cover.jpg", await read(story.coverFileId));
+    add("OEBPS/images/cover.jpg", await read(story.coverFileId, "cover"));
     add("OEBPS/text/cover.xhtml", renderCover(story.title));
     spine.unshift("cover");
     manifest.push({
@@ -75,7 +91,7 @@ async function runBuild(
     if (chapter.illustrationFileId) {
       add(
         `OEBPS/images/ch_${chapter.index}.jpg`,
-        await read(chapter.illustrationFileId),
+        await read(chapter.illustrationFileId, `chapter_${chapter.index}`),
       );
       manifest.push({
         id: `img-ch-${chapter.index}`,
@@ -141,13 +157,20 @@ async function runBuild(
     await ctx.storage.delete(fileId);
     throw error;
   }
-  return fileId;
+  return {
+    fileId,
+    bytes: bytes.byteLength,
+    imageCount: manifest.filter((item) => item.mediaType === "image/jpeg")
+      .length,
+    chapterCount: ordered.length,
+  };
 }
 
 async function trackedBuild(
   ctx: ActionCtx,
   storyId: Id<"stories">,
   existingRunId?: string,
+  context?: DiagnosticContext,
 ): Promise<Id<"_storage">> {
   const runId =
     existingRunId ??
@@ -156,11 +179,60 @@ async function trackedBuild(
       stage: "BUILDING",
     }));
   if (!runId) throw new ConvexError("Your book is already being prepared.");
+
+  const diag = createDiagnostics(ctx, {
+    name: "export",
+    traceId: context?.traceId ?? runId,
+    operationId: context?.operationId ?? operationIdFor("export", runId),
+    parentOperationId: context?.parentOperationId,
+    runId,
+    scheduledAt: context?.scheduledAt,
+    storyId,
+    purpose: "export",
+  });
+  await diag.start();
+
   try {
+    await diag.record("export.stage", {
+      status: "succeeded",
+      stage: "claim",
+    });
     await ctx.runMutation(internal.exportJobs.building, { storyId, runId });
-    return await runBuild(ctx, storyId, runId);
-  } catch {
-    await ctx.runMutation(internal.exportJobs.fail, { storyId, runId });
+    await diag.record("export.stage", {
+      status: "succeeded",
+      stage: "building",
+    });
+    const result = await runBuild(ctx, storyId, runId);
+    await diag.record("export.built", {
+      status: "succeeded",
+      stage: "archive",
+      message:
+        `archive_bytes=${result.bytes} images=${result.imageCount} ` +
+        `chapters=${result.chapterCount}`,
+    });
+    await diag.record("export.stage", {
+      status: "succeeded",
+      stage: "stored",
+    });
+    await diag.finish("succeeded");
+    return result.fileId;
+  } catch (cause) {
+    const superseded =
+      cause instanceof Error && cause.message.includes("no longer active");
+    const missing = (cause as Error & { missingAsset?: string })?.missingAsset;
+    if (missing) {
+      await diag.record("export.failed", {
+        level: "error",
+        status: "failed",
+        stage: "archive",
+        errorCode: "EXPORT_MISSING_ASSET",
+        message: `missing_assets=${missing}`,
+      });
+    }
+    await diag.finish(superseded ? "superseded" : "failed", cause);
+    if (!superseded) {
+      await ctx.runMutation(internal.exportJobs.fail, { storyId, runId });
+    }
     throw new ConvexError(
       "We couldn't prepare your download. Your chapters are saved. Try again.",
     );
@@ -175,7 +247,13 @@ export const buildEpub = action({
 
 /** Scheduler target: only internal functions may be scheduled. */
 export const buildEpubInternal = internalAction({
-  args: { storyId: v.id("stories"), runId: v.optional(v.string()) },
-  handler: async (ctx, { storyId, runId }): Promise<Id<"_storage">> =>
-    trackedBuild(ctx, storyId, runId),
+  args: {
+    storyId: v.id("stories"),
+    runId: v.optional(v.string()),
+    diagnostics: v.optional(diagnosticContext),
+  },
+  handler: async (
+    ctx,
+    { storyId, runId, diagnostics },
+  ): Promise<Id<"_storage">> => trackedBuild(ctx, storyId, runId, diagnostics),
 });

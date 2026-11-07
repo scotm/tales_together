@@ -11,11 +11,19 @@ jest.mock("@/lib/saveBook", () => ({
   saveBook: jest.fn(),
 }));
 
-jest.mock("expo-router", () => ({ useLocalSearchParams: jest.fn() }));
+jest.mock("expo-router", () => ({
+  useLocalSearchParams: jest.fn(),
+  useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
+}));
 jest.mock("convex/react", () => ({
   useQuery: jest.fn(),
   useAction: jest.fn(() => jest.fn()),
   useMutation: jest.fn(() => jest.fn()),
+  useConvexConnectionState: () => ({
+    isWebSocketConnected: true,
+    inflightMutations: 0,
+    inflightActions: 0,
+  }),
 }));
 
 beforeEach(() => {
@@ -243,6 +251,7 @@ it("keeps a ready download available when saving the file fails", async () => {
   expect(saveBook).toHaveBeenLastCalledWith(
     "https://example.test/book.epub",
     "The Windy Kite",
+    expect.any(Function),
   );
   expect(view.queryByText(/We couldn't save the book/)).toBeNull();
 });

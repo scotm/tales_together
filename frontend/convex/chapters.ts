@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { createEventId } from "../shared/diagnostics/contract";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
@@ -11,6 +12,13 @@ import {
 } from "./_generated/server";
 import { queueExport } from "./exportJobs";
 import { GENERATION_LEASE_MS, PROSE_MIN_WORDS } from "./lib/config";
+import {
+  createDiagnostics,
+  type DiagnosticContext,
+  diagnosticContext,
+  operationIdFor,
+  traceIdFor,
+} from "./lib/diagnostics";
 import { type ParsedBeatCard, parseBeatPitch } from "./llm/beatCards";
 import { parseExtraction } from "./llm/extraction";
 import { BEAT_PITCH_SCHEMA, EXTRACTION_SCHEMA } from "./llm/jsonSchemas";
@@ -99,70 +107,106 @@ export const setBeatCards = internalMutation({
 async function runPitch(
   ctx: ActionCtx,
   chapterId: Id<"chapters">,
+  context?: DiagnosticContext,
 ): Promise<ParsedBeatCard[]> {
   const { story, chapter, characters, prior } = await ctx.runQuery(
     internal.chapters.getChapterContext,
     { chapterId },
   );
 
-  if (chapter.beatCards.length > 0) return chapter.beatCards;
-  if (chapter.status !== "PITCHING") {
-    throw new Error(
-      `chapter ${chapter.index} is ${chapter.status}, not PITCHING`,
-    );
-  }
-
-  const prompt = beatPitchPrompt({
-    storyTitle: story.title,
-    vibe: story.vibe,
-    setting: story.worldState.setting,
-    characters: characters.map((character) => ({
-      name: character.name,
-      role: character.role,
-      visualDescription: character.visualDescription,
-      quirk: character.quirk,
-    })),
-    availableItems: story.items
-      .filter((item) => item.status === "IN_BACKPACK")
-      .map((item) => ({ id: item.id, name: item.name })),
-    unresolvedThreads: story.worldState.unresolvedThreads,
-    priorChapters: prior.map((entry) => ({
-      index: entry.index,
-      title: entry.title,
-      summaryBullets: entry.summaryBullets,
-    })),
-    chapterIndex: chapter.index,
-    totalChapters: story.totalChapters,
-    arc: getArcRoleInstructions(chapter.index, story.totalChapters),
-  });
-
-  const raw = await getTextProvider("structured").complete({
-    ...prompt,
-    jsonSchema: BEAT_PITCH_SCHEMA,
-    maxTokens: 1200,
-  });
-
-  const pitch = parseBeatPitch(
-    raw,
-    new Set(story.items.map((item) => item.id)),
-  );
-
-  const verdict = await moderate(
-    pitch.cards
-      .map((card) => `${card.title}: ${card.kidFriendlyPitch}`)
-      .join("\n"),
-  );
-  if (!verdict.ok) {
-    throw new Error(`moderation rejected the pitch: ${verdict.reason}`);
-  }
-
-  await ctx.runMutation(internal.chapters.setBeatCards, {
+  const diag = createDiagnostics(ctx, {
+    name: "pitch",
+    traceId: context?.traceId ?? traceIdFor(story),
+    operationId: context?.operationId,
+    parentOperationId: context?.parentOperationId,
+    runId: context?.runId,
+    scheduledAt: context?.scheduledAt,
+    storyId: story._id,
     chapterId,
-    recapOneLiner: pitch.recapOneLiner,
-    cards: pitch.cards,
   });
+  await diag.start();
 
-  return pitch.cards;
+  try {
+    if (chapter.beatCards.length > 0) {
+      await diag.record("operation.skipped", {
+        status: "skipped",
+        stage: "reused_cards",
+      });
+      await diag.finish("succeeded");
+      return chapter.beatCards;
+    }
+    if (chapter.status !== "PITCHING") {
+      throw new Error(
+        `chapter ${chapter.index} is ${chapter.status}, not PITCHING`,
+      );
+    }
+
+    const prompt = beatPitchPrompt({
+      storyTitle: story.title,
+      vibe: story.vibe,
+      setting: story.worldState.setting,
+      characters: characters.map((character) => ({
+        name: character.name,
+        role: character.role,
+        visualDescription: character.visualDescription,
+        quirk: character.quirk,
+      })),
+      availableItems: story.items
+        .filter((item) => item.status === "IN_BACKPACK")
+        .map((item) => ({ id: item.id, name: item.name })),
+      unresolvedThreads: story.worldState.unresolvedThreads,
+      priorChapters: prior.map((entry) => ({
+        index: entry.index,
+        title: entry.title,
+        summaryBullets: entry.summaryBullets,
+      })),
+      chapterIndex: chapter.index,
+      totalChapters: story.totalChapters,
+      arc: getArcRoleInstructions(chapter.index, story.totalChapters),
+    });
+
+    const provider = getTextProvider("structured");
+    const raw = await provider.complete(
+      { ...prompt, jsonSchema: BEAT_PITCH_SCHEMA, maxTokens: 1200 },
+      diag.providerProgress({
+        provider: provider.name,
+        purpose: "structured",
+      }),
+    );
+
+    const pitch = parseBeatPitch(
+      raw,
+      new Set(story.items.map((item) => item.id)),
+    );
+    await diag.record("operation.validation", {
+      status: "succeeded",
+      stage: "beat_pitch",
+    });
+
+    const verdict = await moderate(
+      pitch.cards
+        .map((card) => `${card.title}: ${card.kidFriendlyPitch}`)
+        .join("\n"),
+    );
+    if (!verdict.ok) {
+      throw new Error(`moderation rejected the pitch: ${verdict.reason}`);
+    }
+
+    await ctx.runMutation(internal.chapters.setBeatCards, {
+      chapterId,
+      recapOneLiner: pitch.recapOneLiner,
+      cards: pitch.cards,
+    });
+    await diag.record("operation.commit", {
+      status: "succeeded",
+      stage: "set_beat_cards",
+    });
+    await diag.finish("succeeded");
+    return pitch.cards;
+  } catch (cause) {
+    await diag.finish("failed", cause);
+    throw cause;
+  }
 }
 
 export const pitchChapter = action({
@@ -172,8 +216,12 @@ export const pitchChapter = action({
 
 /** Only internal functions may be scheduled; same body as the client call. */
 export const pitchNextChapter = internalAction({
-  args: { chapterId: v.id("chapters") },
-  handler: (ctx, { chapterId }) => runPitch(ctx, chapterId),
+  args: {
+    chapterId: v.id("chapters"),
+    diagnostics: v.optional(diagnosticContext),
+  },
+  handler: (ctx, { chapterId, diagnostics }) =>
+    runPitch(ctx, chapterId, diagnostics),
 });
 
 /** The child's card pick. Kept so the prose prompt has one fixed target. */
@@ -253,6 +301,14 @@ export const recoverWriting = internalMutation({
       writingRetry: undefined,
       writingError: "Writing was interrupted. Your choice is saved. Try again.",
     });
+    await ctx.scheduler.runAfter(0, internal.diagnostics.noteOperation, {
+      operationId: operationIdFor("write", runId),
+      name: "operation.recovered",
+      status: "recovered",
+      stage: "writing_watchdog",
+      errorCode: "WRITING_WATCHDOG_RECOVERED",
+      safeMessage: "The writing watchdog released the chapter.",
+    });
   },
 });
 
@@ -276,6 +332,7 @@ export const setChapterProse = internalMutation({
     chapterId: v.id("chapters"),
     paragraphs: v.array(v.string()),
     runId: v.optional(v.string()),
+    diagnostics: v.optional(diagnosticContext),
   },
   handler: async (ctx, args) => {
     if (args.paragraphs.length === 0) {
@@ -302,6 +359,7 @@ export const setChapterProse = internalMutation({
     if (args.runId) {
       await ctx.scheduler.runAfter(0, internal.chapters.extractChapter, {
         chapterId: args.chapterId,
+        diagnostics: args.diagnostics,
       });
     }
   },
@@ -351,8 +409,19 @@ export const writeChapter = action({
     const runId = await ctx.runMutation(internal.chapters.beginWriting, {
       chapterId,
     });
+    const diag = createDiagnostics(ctx, {
+      name: "write",
+      traceId: traceIdFor(story),
+      operationId: operationIdFor("write", runId),
+      runId,
+      storyId: story._id,
+      chapterId,
+      purpose: "prose",
+    });
     try {
-      const progress = {
+      await diag.start();
+      const provider = getTextProvider("prose");
+      const retryProgress = {
         onRetry: async (retry: ProviderRetry) => {
           await ctx.runMutation(internal.chapters.writingRetry, {
             chapterId,
@@ -361,6 +430,16 @@ export const writeChapter = action({
           });
         },
       };
+      const progress = diag.providerProgress({
+        provider: provider.name,
+        purpose: "prose",
+        business: retryProgress,
+      });
+      const expansionProgress = diag.providerProgress({
+        provider: provider.name,
+        purpose: "prose_expansion",
+        business: retryProgress,
+      });
 
       const previous = prior.at(-1);
       const useItem = story.items.find(
@@ -399,7 +478,6 @@ export const writeChapter = action({
 
       // On Gemini 3.x thinking tokens are charged against this budget, so a cap
       // sized for the prose alone can return a truncated chapter.
-      const provider = getTextProvider("prose");
       const raw = await provider.complete(
         { ...prompt, maxTokens: 2400 },
         progress,
@@ -421,7 +499,7 @@ export const writeChapter = action({
                 `sensory detail, not new plot.`,
               maxTokens: 2400,
             },
-            progress,
+            expansionProgress,
           );
           const retried = splitParagraphs(retry);
           const retriedLint = lintProse(retried);
@@ -432,6 +510,14 @@ export const writeChapter = action({
         } catch {
           // Expansion is optional. Keep the valid first draft if the provider
           // exhausts retries rather than losing a chapter the child could read.
+          await diag.record("operation.degraded", {
+            level: "warn",
+            status: "degraded",
+            stage: "prose_expansion",
+            errorCode: "PROSE_EXPANSION_FAILED",
+            message: "The optional expansion failed; the first draft was kept.",
+            retryable: false,
+          });
         }
       }
 
@@ -450,9 +536,20 @@ export const writeChapter = action({
         chapterId,
         paragraphs,
         runId,
+        // Background work inherits the trace but gets its own operation.
+        diagnostics: diag.child({ name: "extraction" }),
       });
+      await diag.record("operation.commit", {
+        status: "succeeded",
+        stage: "set_chapter_prose",
+      });
+
+      await diag.finish("succeeded");
       return paragraphs;
-    } catch {
+    } catch (cause) {
+      const superseded =
+        cause instanceof Error && cause.message.includes("no longer active");
+      await diag.finish(superseded ? "superseded" : "failed", cause);
       const error =
         "We couldn't finish this chapter. Your choice is saved. Try again.";
       await ctx.runMutation(internal.chapters.abandonWriting, {
@@ -563,17 +660,33 @@ export const applyExtraction = internalMutation({
  * child is reading with it.
  */
 export const extractChapter = internalAction({
-  args: { chapterId: v.id("chapters") },
-  handler: async (ctx, { chapterId }): Promise<void> => {
+  args: {
+    chapterId: v.id("chapters"),
+    diagnostics: v.optional(diagnosticContext),
+  },
+  handler: async (ctx, { chapterId, diagnostics }): Promise<void> => {
     const { story, chapter, characters, next } = await ctx.runQuery(
       internal.chapters.getChapterContext,
       { chapterId },
     );
     if (chapter.extractionStatus === "DONE") return;
 
-    await ctx.runMutation(internal.chapters.beginExtraction, { chapterId });
+    const diag = createDiagnostics(ctx, {
+      name: "extraction",
+      traceId: diagnostics?.traceId ?? traceIdFor(story),
+      operationId: diagnostics?.operationId,
+      parentOperationId: diagnostics?.parentOperationId,
+      runId: diagnostics?.runId,
+      scheduledAt: diagnostics?.scheduledAt,
+      storyId: story._id,
+      chapterId,
+      purpose: "structured",
+    });
+    await diag.start();
 
     try {
+      await ctx.runMutation(internal.chapters.beginExtraction, { chapterId });
+
       const prompt = extractionPrompt({
         chapterIndex: chapter.index,
         chapterParagraphs: chapter.paragraphs,
@@ -587,33 +700,48 @@ export const extractChapter = internalAction({
           .map((item) => ({ id: item.id, name: item.name })),
       });
 
-      const raw = await getTextProvider("structured").complete({
-        ...prompt,
-        jsonSchema: EXTRACTION_SCHEMA,
-        maxTokens: 1200,
-      });
+      const provider = getTextProvider("structured");
+      const raw = await provider.complete(
+        { ...prompt, jsonSchema: EXTRACTION_SCHEMA, maxTokens: 1200 },
+        diag.providerProgress({
+          provider: provider.name,
+          purpose: "structured",
+        }),
+      );
 
       const extraction = parseExtraction(
         raw,
         new Set(story.items.map((item) => item.id)),
       );
+      await diag.record("operation.validation", {
+        status: "succeeded",
+        stage: "extraction",
+      });
 
       await ctx.runMutation(internal.chapters.applyExtraction, {
         chapterId,
         ...extraction,
       });
+      await diag.record("operation.commit", {
+        status: "succeeded",
+        stage: "apply_extraction",
+      });
 
       // Art and the next chapter's cards are background work from here on.
       await ctx.scheduler.runAfter(0, internal.media.illustrateChapter, {
         chapterId,
+        diagnostics: diag.child({ name: "illustration" }),
       });
 
       if (next && next.beatCards.length === 0) {
         await ctx.scheduler.runAfter(0, internal.chapters.pitchNextChapter, {
           chapterId: next._id,
+          diagnostics: diag.child({ name: "pitch" }),
         });
       }
+      await diag.finish("succeeded");
     } catch (cause) {
+      await diag.finish("failed", cause);
       await ctx.runMutation(internal.chapters.failExtraction, { chapterId });
       throw cause;
     }
@@ -652,6 +780,11 @@ export const lockChapter = mutation({
     if (chapter.extractionStatus !== "DONE") {
       await ctx.scheduler.runAfter(0, internal.chapters.extractChapter, {
         chapterId,
+        diagnostics: {
+          traceId: traceIdFor(story),
+          operationId: createEventId("extract"),
+          scheduledAt: Date.now(),
+        },
       });
     }
   },

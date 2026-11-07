@@ -28,6 +28,8 @@ import {
   View,
 } from "react-native";
 import { useReconnectBackend } from "@/lib/BackendProvider";
+import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
+import { useQueryDiagnostics } from "@/lib/diagnostics/query";
 
 function pick<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)] as T;
@@ -63,20 +65,22 @@ export default function HomeScreen() {
   const client = useConvex();
   const connection = useConvexConnectionState();
   const reconnect = useReconnectBackend();
+  const diagnostics = useDiagnostics();
+  useQueryDiagnostics(
+    "stories.listRecent",
+    stories,
+    connection.isWebSocketConnected,
+  );
   const [loadTimedOut, setLoadTimedOut] = useState(false);
   const waiting = stories === undefined || !connection.isWebSocketConnected;
   useEffect(() => {
     setLoadTimedOut(false);
     if (!waiting) return;
     const timer = setTimeout(() => {
-      console.warn("Story server response timed out", {
-        url: client.url,
-        ...client.connectionState(),
-      });
       setLoadTimedOut(true);
     }, 10_000);
     return () => clearTimeout(timer);
-  }, [waiting, client]);
+  }, [waiting]);
 
   const [setting, setSetting] = useState<CatalogOption>(WORLD_SETTINGS[0]);
   const [problem, setProblem] = useState<CatalogOption>(WORLD_PROBLEMS[0]);
@@ -125,18 +129,20 @@ export default function HomeScreen() {
     setCreating(true);
     setError(null);
     try {
-      const storyId = await createStory({
-        title: `${heroName} and the ${problem.label.replace(/!$/, "")}`,
-        setting: setting.promptFragment,
-        centralProblem: problem.promptFragment,
-        protagonistName: heroName,
-        protagonistQuirk: quirk.promptFragment,
-        visualDescription: `${archetype.promptFragment} ${outfit.promptFragment}`,
-        backpackItems: packed.map((id) => ({
-          id,
-          name: CONVEYOR_ITEMS.find((item) => item.id === id)?.label ?? id,
-        })),
-      });
+      const storyId = await diagnostics.track("stories.create", () =>
+        createStory({
+          title: `${heroName} and the ${problem.label.replace(/!$/, "")}`,
+          setting: setting.promptFragment,
+          centralProblem: problem.promptFragment,
+          protagonistName: heroName,
+          protagonistQuirk: quirk.promptFragment,
+          visualDescription: `${archetype.promptFragment} ${outfit.promptFragment}`,
+          backpackItems: packed.map((id) => ({
+            id,
+            name: CONVEYOR_ITEMS.find((item) => item.id === id)?.label ?? id,
+          })),
+        }),
+      );
       router.push({ pathname: "/story/[storyId]", params: { storyId } });
     } catch (cause) {
       setError(
@@ -154,6 +160,13 @@ export default function HomeScreen() {
         <Text style={styles.subtitle}>
           Build a world, pick a hero, pack three things.
         </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/diagnostics")}
+          style={styles.help}
+        >
+          <Text style={styles.helpLabel}>Help &amp; diagnostics</Text>
+        </Pressable>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Where are we?</Text>
@@ -313,6 +326,13 @@ export default function HomeScreen() {
                   <Text style={styles.spinLabel}>Try connecting again</Text>
                 </Pressable>
               )}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push("/diagnostics")}
+                style={styles.spin}
+              >
+                <Text style={styles.spinLabel}>Help &amp; diagnostics</Text>
+              </Pressable>
             </View>
           ) : null}
           {stories?.length === 0 ? (
@@ -355,6 +375,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 36, fontWeight: "800", color: "#1F1A17" },
   subtitle: { fontSize: 16, lineHeight: 24, color: "#57534E" },
+  help: { alignSelf: "flex-start", paddingVertical: 4 },
+  helpLabel: { fontSize: 15, color: "#92400E" },
   section: { marginTop: 16, gap: 8 },
   sectionTitle: { fontSize: 20, fontWeight: "700", color: "#1F1A17" },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
