@@ -1,0 +1,46 @@
+name: opencode-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    concurrency:
+      group: opencode-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install OpenCode
+        run: |
+          set -o pipefail
+          curl -fsSL https://opencode.ai/install | bash -s -- --version 1.18.33
+      - name: Review pull request
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL || 'opencode-go/glm-5.3-flash' }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          "$HOME/.opencode/bin/opencode" run --model "$OPENCODE_MODEL" \
+            "Review git diff $BASE_SHA...HEAD for concrete correctness, security, or compatibility bugs introduced by this PR.
+            Start with the diff. Inspect directly related callers, tests, or configuration only to verify a specific suspected issue; do not audit unrelated code or history, inspect other PRs, search outside the repository, or fetch external sources.
+            Do not install dependencies, run full test suites, or build standalone reproductions. For documentation changes, focus on factual errors and unsafe or broken commands, checking referenced repository files only as needed.
+            Skip style nitpicks, speculative concerns, and optional refactors. Once suspected issues are confirmed or ruled out, stop investigating.
+            Report concise actionable findings with changed-file line references, impact, and a suggested fix; if there are none, say so. Note any material verification limits. Do not edit files." \
+            > "$RUNNER_TEMP/opencode-review.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/opencode-review.md"; then
+            echo 'OpenCode produced no review text' >&2
+            exit 1
+          fi
+          gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/opencode-review.md"
