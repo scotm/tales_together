@@ -32,6 +32,10 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          if [ -z "${OPENCODE_API_KEY:-}" ]; then
+            echo "OPENCODE_API_KEY is not configured; skipping review."
+            exit 0
+          fi
           "$HOME/.opencode/bin/opencode" run --model "$OPENCODE_MODEL" \
             "Review git diff $BASE_SHA...HEAD for concrete correctness, security, or compatibility bugs introduced by this PR.
             Start with the diff. Inspect directly related callers, tests, or configuration only to verify a specific suspected issue; do not audit unrelated code or history, inspect other PRs, search outside the repository, or fetch external sources.
