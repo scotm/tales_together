@@ -71,6 +71,11 @@ collecting a report, finding a trace, health checks, purge, usage and receipts.
 **[Design notes](./design/)** — `asset-backlog.md` (graphics still needed, already v0-scoped) and
 `figcraft.md` (how to drive the FigCraft source build).
 
+**[Storybook Workshop implementation plan](./design/storybook-workshop-implementation.md)** —
+maps the revised FigCraft world, hero and chapter screens to the current Expo/Convex
+app, including a Convex-owned catalogue, saved selection snapshots, spoken or
+typed custom hero ideas, assets, delivery slices and acceptance checks.
+
 ---
 
 ## 🏗️ High-Level System Flow

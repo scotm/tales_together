@@ -9,6 +9,9 @@ chapter choices on desktop, and world setup on a phone. Review exports are in
 workflow: four desktop frames and four phone frames per character branch
 (River otter and Kid Explorer). See
 `character-workflow.md` for its interaction and implementation notes.
+Page 3 expands each category to sixteen choices with scrollable shelves and
+Shuffle controls. `scroll-and-shuffle.md` documents that iteration; its
+interactive review is `exports/hero-picker.html`.
 
 ## Direction
 

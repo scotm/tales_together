@@ -1,5 +1,9 @@
 # Character creation — Storybook Workshop
 
+The latest sixteen-option shelves and interactive review are documented in
+`scroll-and-shuffle.md`. This file records the earlier four-option study and
+the shared character → outfit → quirk → name sequence.
+
 Exploratory design, 2026-11-08. Page `02 · Create your hero` in
 `storybook-workshop.figcraft`; exports `exports/hero-desktop-{1..4}.png` and
 `exports/hero-phone-{1..4}.png`. The Kid Explorer branch uses

@@ -17,6 +17,39 @@ Revisit when:
 
 ---
 
+## Convex workshop catalogue and open hero choices — proposed, 2026-11-08
+
+**Direction:** the workshop shelves are curated suggestions stored in Convex,
+not a fixed set embedded in the client. Seed existing stable IDs and prompt
+fragments, version published options, and snapshot selected values onto each
+story/protagonist so later catalogue edits cannot rewrite an existing hero.
+Custom ideas remain private to their setup/story; they are never automatically
+published into the shared catalogue.
+
+**Open input:** a child can speak or type a character, outfit, quirk or extra
+detail. Speech becomes editable text, then a structured proposed change which
+the family confirms. Preserve specifics such as a blue cape and rainbow
+glasses instead of forcing them into the nearest preset. Server-side resolution
+composes the existing generation descriptions from validated choices. Local
+art has an honest neutral/text fallback for unsupported custom details.
+
+**Scope change:** this proposes spoken hero setup despite the original v0
+voice exclusion; chapter voice wildcards remain out of scope. It requires
+additive schema/API work, recording/transcription and an enforced input
+boundary. The current `moderation.ts` helper is a pass-through. The current
+text-provider interface has no audio contract. A transcription provider has
+not been selected, and no new speech infrastructure is implemented yet.
+
+**Gotchas:** ordinary HTTP LAN testing on iPad does not establish browser
+microphone support; capture needs a secure context. Test recording formats,
+permissions, cancellation, bounded usage and temporary audio cleanup on the
+target devices. Avoid raw audio/transcripts in diagnostics. See the
+[implementation plan](./design/storybook-workshop-implementation.md#5-convex-catalogue-saved-choices-and-open-ideas)
+for the proposed data model, migration and sources.
+
+**Revisit when:** the capture/transcription spike establishes format, quality,
+cost and processing limits, or durable unfinished drafts become a requirement.
+
 ## iPad browser testing over LAN — accepted, 2026-11-07
 
 **Decision:** `npm run web:lan` detects the Mac's LAN IPv4 address, starts the
