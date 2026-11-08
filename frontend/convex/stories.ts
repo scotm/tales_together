@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { createEventId } from "../shared/diagnostics/contract";
 import {
   internalMutation,
   internalQuery,
@@ -69,6 +70,7 @@ export const create = mutation({
         status: "IN_BACKPACK" as const,
       })),
       ...(authorName ? { authorName } : {}),
+      traceId: createEventId("trace"),
       createdAt: Date.now(),
     });
 

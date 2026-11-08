@@ -185,6 +185,48 @@ disabled because JSZip otherwise gives them the current date, breaking reproduci
 **Revisit when:** the revised export has been re-imported on the iPad, or cover typography
 is implemented.
 
+## Application diagnostics — accepted, 2026-11-07
+
+**Decision:** D0–D2 of `docs/07-application-diagnostics-plan.md` are implemented. Shared,
+runtime-neutral event definitions and a bounded client ring live in
+`frontend/shared/diagnostics/`. Convex keeps `diagnosticOperations` (30-day summaries) and
+`diagnosticEvents` (7-day critical transitions); provider attempts, chapter stages, media, export and
+watchdogs write through `convex/lib/diagnostics.ts`. The app has a Help → Diagnostics screen with a
+local-only timeline, two connection checks and a redacted support bundle. Server inspection stays on
+`frontend/scripts/diagnostics.mjs` (internal `diagnostics:trace` / `:recent`).
+
+**Why:** the iPad incident needed to separate HTTP reachability, a live-query stall and a broken
+WebSocket. A local buffer records a connection failure without needing the backend it is trying to
+reach; Convex summaries keep enough evidence after the console log rotates.
+
+**Gotchas (verified 2026-11-07):**
+
+- Diagnostic writes are optional: every persistence call is bounded and swallowed, so a broken sink
+  cannot turn a readable chapter or finished EPUB into a failure. Console JSON remains the detailed
+  fallback.
+- Scheduled work gets an explicit `diagnosticContext` (trace, operation, parent, run, scheduledAt).
+  Process globals do not survive Convex action boundaries.
+- `writingRunId`/`exportRunId` remain the authority for stale-worker guards. Diagnostic operation ids
+  are derived (`write-<runId>`, `export-<runId>`) and never authorize a state change.
+- Only critical events are persisted (failures, warnings, retries, degraded/recovered/superseded
+  terminals); routine starts and successful provider results stay in console JSON. The per-operation
+  cap is 50 events.
+- Client-generated operation ids are labels passed to public actions so a support report can be joined
+  to a server trace. They never authorize a state change, and an invalid label is ignored. Server
+  trace ids still come from the story.
+- A handled cover failure is an `export.degraded` event and a `cover` summary with status `degraded`;
+  the EPUB build still reports success.
+- Client support bundles strip story/chapter ids and redact private hosts. The on-device panel shows
+  the full local origin so a developer can debug it.
+- D3 is implemented: paginated trace/recent, `diagnostics:health`, admin purge by story, daily
+  bounded retention cleanup and a deployment-wide event/summary/byte quota.
+- D4 is implemented: normal-generation receipts, explicit reconciliation by provider request id,
+  bounded usage/metrics views and a baseline command. No external notifications are sent; alerts
+  remain an operator decision after a real baseline.
+
+**Revisit when:** real incidents show a missing event, retention needs a cleanup job, or provider
+spend needs reconciliation rather than sampled receipts.
+
 ## Local text model for dev — oMLX + Gemma 4 E4B — accepted, 2026-11-05
 
 **Decision:** `LOCAL_LLM_URL` (plus optional `LOCAL_LLM_API_KEY` and `LOCAL_LLM_MODEL`) points

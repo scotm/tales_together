@@ -84,6 +84,26 @@ test("a failed cover still produces a readable EPUB and a visible warning", asyn
   expect(story?.epubFileId).toBeDefined();
   expect(story?.exportWarning).toContain("cover could not be made");
   expect(story?.exportRunId).toBeUndefined();
+
+  const operations = await t.run((ctx) =>
+    ctx.db.query("diagnosticOperations").collect(),
+  );
+  expect(
+    operations.some(
+      (operation) =>
+        operation.name === "cover" && operation.status === "degraded",
+    ),
+  ).toBe(true);
+  expect(
+    operations.some(
+      (operation) =>
+        operation.name === "export" && operation.status === "succeeded",
+    ),
+  ).toBe(true);
+  const events = await t.run((ctx) =>
+    ctx.db.query("diagnosticEvents").collect(),
+  );
+  expect(events.some((event) => event.name === "export.degraded")).toBe(true);
 });
 
 test("disabling image spending still exports the book without a cover warning", async () => {

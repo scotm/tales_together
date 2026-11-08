@@ -7,6 +7,7 @@ import {
   mutation,
 } from "./_generated/server";
 import { GENERATION_LEASE_MS } from "./lib/config";
+import { operationIdFor, safeOperationId } from "./lib/diagnostics";
 import { retryProgress } from "./schema";
 
 const stages = v.union(v.literal("PREPARING_COVER"), v.literal("BUILDING"));
@@ -40,6 +41,7 @@ async function claim(
 export async function queueExport(
   ctx: MutationCtx,
   storyId: Id<"stories">,
+  clientOperationId?: string,
 ): Promise<void> {
   const previous = await ctx.db.get(storyId);
   const runId = await claim(ctx, storyId, "PREPARING_COVER");
@@ -48,17 +50,31 @@ export async function queueExport(
     storyId,
     exportRunId: runId,
     regenerate: Boolean(previous?.exportWarning),
+    ...(previous
+      ? {
+          diagnostics: {
+            traceId: previous.traceId ?? previous._id,
+            operationId:
+              safeOperationId(clientOperationId) ??
+              operationIdFor("cover", runId),
+            scheduledAt: Date.now(),
+          },
+        }
+      : {}),
   });
 }
 
 export const retry = mutation({
-  args: { storyId: v.id("stories") },
-  handler: async (ctx, { storyId }) => {
+  args: {
+    storyId: v.id("stories"),
+    clientOperationId: v.optional(v.string()),
+  },
+  handler: async (ctx, { storyId, clientOperationId }) => {
     const story = await ctx.db.get(storyId);
     if (story?.status !== "COMPLETED") {
       throw new ConvexError("Finish the book before exporting it.");
     }
-    await queueExport(ctx, storyId);
+    await queueExport(ctx, storyId, clientOperationId);
   },
 });
 
@@ -153,6 +169,14 @@ export const expire = internalMutation({
       exportRetry: undefined,
       exportError:
         "Preparing the download was interrupted. Your chapters are saved. Try again.",
+    });
+    await ctx.scheduler.runAfter(0, internal.diagnostics.noteOperation, {
+      operationId: operationIdFor("export", runId),
+      name: "export.watchdog",
+      status: "recovered",
+      stage: "export_watchdog",
+      errorCode: "EXPORT_WATCHDOG_RECOVERED",
+      safeMessage: "The export watchdog released the interrupted job.",
     });
   },
 });

@@ -50,20 +50,34 @@ afterEach(() => {
 });
 
 it("downloads a named blob and releases its temporary URL", async () => {
-  await saveBook("https://example.test/book.epub", "Kites / Clouds");
+  const stages: string[] = [];
+  await saveBook("https://example.test/book.epub", "Kites / Clouds", (stage) =>
+    stages.push(stage),
+  );
   expect(link.download).toBe("Kites - Clouds.epub");
   expect(link.href).toBe("blob:book");
   expect(click).toHaveBeenCalledTimes(1);
   expect(remove).toHaveBeenCalledTimes(1);
   expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+  expect(stages).toEqual([
+    "fetch_started",
+    "fetched",
+    "blob_created",
+    "browser_handoff",
+    "browser_handoff",
+  ]);
   jest.runAllTimers();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:book");
 });
 
 it("does not offer an HTTP error as an EPUB", async () => {
-  (fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+  const stages: string[] = [];
+  (fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 500 });
   await expect(
-    saveBook("https://example.test/book.epub", "Book"),
+    saveBook("https://example.test/book.epub", "Book", (stage) =>
+      stages.push(stage),
+    ),
   ).rejects.toThrow(/downloaded/);
+  expect(stages).toEqual(["fetch_started", "fetch_failed"]);
   expect(click).not.toHaveBeenCalled();
 });

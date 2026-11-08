@@ -87,6 +87,16 @@ export function createSurplusImageGenerator(options: {
         : null;
     if (!contentType)
       throw new Error("surplus returned an unsupported image format");
+    try {
+      await progress?.onResult?.({
+        requestId,
+        costMicroUsd,
+        currency: costMicroUsd === undefined ? undefined : "USD",
+        costBasis: costMicroUsd === undefined ? undefined : "reported",
+      });
+    } catch {
+      // Receipt collection must not change provider behaviour.
+    }
     return { bytes, contentType, requestId, costMicroUsd, servedBy };
   };
 }

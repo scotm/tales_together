@@ -1,8 +1,8 @@
 # 07 — Application diagnostics plan
 
-Status: proposed implementation plan, 2026-11-07. No diagnostics service or new
-data model is implemented by this document. File references below describe the
-current code; new modules, tables and commands are explicitly proposed.
+Status: D0–D4 implemented 2026-11-07. No external diagnostics collector is
+implemented by this document. File references below describe the current code;
+new modules, tables and commands are explicitly proposed.
 
 ## Outcome
 

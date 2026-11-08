@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_TIMEOUT_MS } from "../lib/config";
-import { requestProviderJson } from "./request";
+import { type RequestAttemptInfo, requestProviderJson } from "./request";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -159,5 +159,76 @@ describe("provider backoff", () => {
       .mockResolvedValue(new Response("bad json"));
     await expect(request(fetchImpl)).rejects.toThrow(/request failed/);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports every attempt and treats a broken hook as non-fatal", async () => {
+    const attempts: { phase: string; status?: number; willRetry?: boolean }[] =
+      [];
+    const seenStatuses: number[] = [];
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ ok: true }));
+    const result = requestProviderJson({
+      provider: "test",
+      url: "https://example.test/generate",
+      init: { method: "POST" },
+      fetchImpl: fetchImpl as typeof fetch,
+      progress: {
+        onAttempt: (attempt) => {
+          attempts.push(attempt);
+          throw new Error("sink down");
+        },
+      },
+      onResponse: (response) => {
+        seenStatuses.push(response.status);
+      },
+    });
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toEqual({ ok: true });
+    expect(attempts.map((attempt) => attempt.phase)).toEqual([
+      "started",
+      "failed",
+      "started",
+      "succeeded",
+    ]);
+    expect(attempts[1]).toMatchObject({ status: 503, willRetry: true });
+    expect(seenStatuses).toEqual([503, 200]);
+  });
+
+  it("exposes only allowlisted receipt headers to the attempt hook", async () => {
+    const attempts: RequestAttemptInfo[] = [];
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json(
+        { ok: true },
+        {
+          headers: {
+            "x-request-id": "req-1",
+            "x-si-buyer-cost-micro": "1200",
+            authorization: "secret-key",
+          },
+        },
+      ),
+    );
+    await requestProviderJson({
+      provider: "test",
+      url: "https://example.test/generate",
+      init: { method: "POST" },
+      fetchImpl: fetchImpl as typeof fetch,
+      progress: {
+        onAttempt: (attempt) => {
+          attempts.push(attempt);
+        },
+      },
+    });
+    expect(
+      attempts.find((attempt) => attempt.phase === "succeeded"),
+    ).toMatchObject({
+      requestId: "req-1",
+      costMicroUsd: 1200,
+      currency: "USD",
+      costBasis: "reported",
+    });
+    expect(JSON.stringify(attempts)).not.toContain("secret-key");
   });
 });

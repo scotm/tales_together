@@ -24,10 +24,11 @@ If Recent stories cannot load, after ten seconds it shows the backend address an
 a reconnect button. Reconnecting preserves the form; queued writes are allowed
 to finish first. For a device connection problem, open `http://<Mac-IP>:3210/version`
 on the device: a response of `unknown` is normal for this self-hosted build.
-If that works but the app still cannot connect, check the displayed server address
-and the browser console's connection timeout warning. Web development also maps a
-configured loopback backend host to the browser's host. Reload Safari after switching
-between local and LAN testing to replace any cached development bundle.
+If that works but the app still cannot connect, open **Help → Diagnostics** and run
+**Check connection**; the panel shows the effective backend, build and local event
+timeline, and can export a redacted report without the backend. Web development also
+maps a configured loopback backend host to the browser's host. Reload Safari after
+switching between local and LAN testing to replace any cached development bundle.
 
 - Routes: `src/app/` (Expo Router). Platform-specific files use `.web.tsx` / `.native.tsx`.
 - Convex functions: `convex/`. Generated types are committed.
@@ -35,6 +36,9 @@ between local and LAN testing to replace any cached development bundle.
 - Checks: `npm run check` (typecheck → Biome → jest → Vitest).
 - One UI test: `npx jest src/path/to/file.test.tsx`
 - One backend test: `npx vitest run convex/stories.test.ts`
+- Server diagnostics: `npm run diagnostics -- health`, `usage`, `metrics`,
+  `baseline`, `trace <operationId>` or `recent --story <storyId>`; see
+  `../docs/diagnostics-runbook.md`.
 
 ## Image cost controls
 

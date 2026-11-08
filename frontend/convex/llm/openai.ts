@@ -2,7 +2,15 @@ import type { TextProvider, TextRequest } from "./provider";
 import { type RequestProgress, requestProviderJson } from "./request";
 
 interface ChatResponse {
-  choices?: { message?: { content?: string | null } }[];
+  choices?: {
+    message?: { content?: string | null };
+    finish_reason?: string;
+  }[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 /**
@@ -50,6 +58,21 @@ export function createOpenaiProvider(options: {
         },
       });
       const text = payload.choices?.[0]?.message?.content;
+
+      try {
+        await progress?.onResult?.({
+          usage: payload.usage
+            ? {
+                inputTokens: payload.usage.prompt_tokens,
+                outputTokens: payload.usage.completion_tokens,
+                totalTokens: payload.usage.total_tokens,
+              }
+            : undefined,
+          finishReason: payload.choices?.[0]?.finish_reason,
+        });
+      } catch {
+        // Receipt collection must not change provider behaviour.
+      }
 
       if (!text) {
         throw new Error("openai-compatible server returned no text");
