@@ -1,18 +1,22 @@
 /// <reference types="jest" />
 import { act, fireEvent, render } from "@testing-library/react-native";
 import { useConvexConnectionState, useQuery } from "convex/react";
+import { View } from "react-native";
+import { SetupProvider } from "@/features/setup/SetupProvider";
 import HomeScreen from "../app/index";
 
 const mockReconnect = jest.fn();
 const mockCreateStory = jest.fn();
-const mockClient = {
-  url: "http://192.168.50.176:3210",
-  connectionState: () => ({}),
-};
+const mockPush = jest.fn();
+const mockClient = { url: "http://192.168.50.176:3210" };
 jest.mock("@/lib/BackendProvider", () => ({
   useReconnectBackend: () => mockReconnect,
 }));
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.mock(
+  "react-native-safe-area-context",
+  () => require("react-native-safe-area-context/jest/mock").default,
+);
 jest.mock("convex/react", () => ({
   useQuery: jest.fn(),
   useMutation: () => mockCreateStory,
@@ -26,62 +30,239 @@ const connected = {
   inflightActions: 0,
 };
 
+function Workshop({ clientVersion = 0 }: { clientVersion?: number }) {
+  return (
+    <SetupProvider>
+      <View key={clientVersion}>
+        <HomeScreen />
+      </View>
+    </SetupProvider>
+  );
+}
+
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
-  jest.mocked(useQuery).mockReturnValue(undefined);
+  mockCreateStory.mockReset();
+  mockPush.mockReset();
+  jest.mocked(useQuery).mockReturnValue([]);
   (useConvexConnectionState as jest.Mock).mockReturnValue(connected);
 });
 afterEach(() => jest.useRealTimers());
 
-it("replaces an unresolved spinner with a retry and recovers without losing choices", async () => {
-  (useConvexConnectionState as jest.Mock).mockReturnValue({
-    ...connected,
-    isWebSocketConnected: false,
-  });
-  const view = await render(<HomeScreen />);
-  await fireEvent.changeText(view.getByPlaceholderText("Hero name"), "Mira");
-  expect(view.getByLabelText("Loading recent stories")).toBeTruthy();
-  await act(() => jest.advanceTimersByTime(10_000));
-  expect(view.queryByLabelText("Loading recent stories")).toBeNull();
-  expect(view.getByText(/Cannot connect to the story server/)).toBeTruthy();
-  expect(view.getByText(/192.168.50.176:3210/)).toBeTruthy();
-  await fireEvent.press(view.getByText("Start the story"));
-  expect(mockCreateStory).not.toHaveBeenCalled();
-  await fireEvent.press(view.getByText("Try connecting again"));
-  expect(mockReconnect).toHaveBeenCalledTimes(1);
+async function nameHero(
+  view: Awaited<ReturnType<typeof render>>,
+  name = "Mira",
+) {
+  await fireEvent.press(view.getByLabelText("Step 3 of 3: Backpack"));
+  await fireEvent.changeText(view.getByLabelText("Hero name"), name);
+}
 
-  (useConvexConnectionState as jest.Mock).mockReturnValue(connected);
-  jest.mocked(useQuery).mockReturnValue([]);
-  await view.rerender(<HomeScreen />);
+async function packBag(view: Awaited<ReturnType<typeof render>>) {
+  await nameHero(view);
+  await fireEvent.press(view.getByText("Pack their bag →"));
+}
+
+it("guards every path to Backpack and retains choices through tabs and Recent stories", async () => {
+  const view = await render(<Workshop />);
+  await fireEvent.press(view.getByText("Make your hero →"));
+  expect(view.queryByLabelText("Hero name")).toBeNull();
+  await fireEvent.press(
+    view.getByRole("radio", { name: "Rusty Clockwork Robot" }),
+  );
+  await fireEvent.press(view.getByLabelText("Step 3 of 3: Backpack"));
+  expect(view.getByLabelText("Hero name").props.value).toBe("");
+  expect(view.getByText("Give your hero a name to keep going.")).toBeTruthy();
+  expect(view.getByRole("button", { name: "Pack their bag →" })).toBeDisabled();
+  await fireEvent.changeText(view.getByLabelText("Hero name"), "   ");
+  await fireEvent(view.getByLabelText("Hero name"), "submitEditing");
+  expect(view.queryByText("Start the story")).toBeNull();
+  await fireEvent.changeText(view.getByLabelText("Hero name"), "Mira");
+  await fireEvent.press(view.getByText("Recent stories"));
   expect(view.getByText("No stories yet. Make the first one.")).toBeTruthy();
-  expect(view.queryByText(/Cannot connect/)).toBeNull();
+  await fireEvent.press(view.getByText("Back to the workshop"));
   expect(view.getByDisplayValue("Mira")).toBeTruthy();
+  await fireEvent.press(view.getByRole("tab", { name: "Character" }));
+  expect(
+    view.getByRole("radio", { name: "Rusty Clockwork Robot" }),
+  ).toBeChecked();
+  expect(mockCreateStory).not.toHaveBeenCalled();
 });
 
-it("reports a stalled query even when its socket is connected", async () => {
-  const view = await render(<HomeScreen />);
-  await act(() => jest.advanceTimersByTime(10_000));
-  expect(view.getByText(/taking too long to respond/)).toBeTruthy();
+it("allows direct world selection while kept and retains both Keep switches across steps", async () => {
+  const view = await render(<Workshop />);
+  await fireEvent.press(view.getByLabelText("Keep this place"));
+  await fireEvent.press(view.getByLabelText("Keep this trouble"));
+  expect(view.getByRole("button", { name: "🎲 Surprise me" })).toBeDisabled();
+  await fireEvent.press(view.getByLabelText("Change the place"));
+  await fireEvent.press(
+    view.getByRole("radio", { name: "Midnight Dinosaur Museum" }),
+  );
+  await fireEvent.press(view.getByText("Make your hero →"));
+  await fireEvent.press(view.getByLabelText("Step 1 of 3: World"));
+  expect(view.getByLabelText("Keep this place")).toBeChecked();
+  expect(view.getByLabelText("Keep this trouble")).toBeChecked();
+  expect(view.getAllByText("Midnight Dinosaur Museum")).toHaveLength(2);
 });
 
-it("keeps cached stories visible but prevents retry from discarding a queued write", async () => {
-  jest.mocked(useQuery).mockReturnValue([
-    {
-      _id: "story_1",
-      title: "The Windy Kite",
-      totalChapters: 5,
-      readingLevel: "AGES_7_9",
-    },
-  ]);
+it("enforces three bag items and submits the selected world, hero and author once", async () => {
+  mockCreateStory.mockResolvedValue("story_new");
+  const view = await render(<Workshop />);
+  await packBag(view);
+  await fireEvent.changeText(
+    view.getByLabelText("Written by (optional)"),
+    "  Alex  ",
+  );
+  await fireEvent.press(
+    view.getByRole("checkbox", { name: "Inside-Out Umbrella" }),
+  );
+  expect(
+    view.getByText("The bag is full. Take something out first."),
+  ).toBeTruthy();
+  await fireEvent.press(view.getByRole("checkbox", { name: "Golden Whisk" }));
+  expect(view.getByRole("button", { name: "Start the story" })).toBeDisabled();
+  await fireEvent.press(
+    view.getByRole("checkbox", { name: "Inside-Out Umbrella" }),
+  );
+  await fireEvent.press(view.getByText("Start the story"));
+  expect(mockCreateStory).toHaveBeenCalledTimes(1);
+  expect(mockCreateStory).toHaveBeenCalledWith(
+    expect.objectContaining({
+      protagonistName: "Mira",
+      title: "Mira and the Royal Cake Escape",
+      authorName: "Alex",
+      backpackItems: [
+        { id: "item_jam", name: "Jar of Glow-Jam" },
+        { id: "item_kazoo", name: "Grandma's Kazoo" },
+        { id: "item_umbrella", name: "Inside-Out Umbrella" },
+      ],
+    }),
+  );
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: "/story/[storyId]",
+    params: { storyId: "story_new" },
+  });
+  // The successful draft is reset for the next book.
+  expect(view.getByText("Build a world")).toBeTruthy();
+  await fireEvent.press(view.getByLabelText("Step 3 of 3: Backpack"));
+  expect(view.getByLabelText("Hero name").props.value).toBe("");
+});
+
+it("preserves the draft on creation failure and lets the child retry", async () => {
+  mockCreateStory.mockRejectedValueOnce(new Error("Please try again."));
+  const view = await render(<Workshop />);
+  await packBag(view);
+  await fireEvent.changeText(
+    view.getByLabelText("Written by (optional)"),
+    "Alex",
+  );
+  await fireEvent.press(view.getByText("Start the story"));
+  expect(view.getByText("Please try again.")).toBeTruthy();
+  expect(view.getByDisplayValue("Alex")).toBeTruthy();
+  expect(view.getByText("Mira")).toBeTruthy();
+  expect(view.getByRole("checkbox", { name: "Golden Whisk" })).toBeChecked();
+  expect(mockPush).not.toHaveBeenCalled();
+  mockCreateStory.mockResolvedValueOnce("story_retry");
+  await fireEvent.press(view.getByText("Start the story"));
+  expect(mockCreateStory).toHaveBeenCalledTimes(2);
+  expect(mockPush).toHaveBeenCalledWith(
+    expect.objectContaining({
+      params: { storyId: "story_retry" },
+    }),
+  );
+});
+
+it("keeps a pending creation stable and blocks retries that could discard it", async () => {
+  let finish!: (id: string) => void;
+  mockCreateStory.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const view = await render(<Workshop />);
+  await packBag(view);
+  await fireEvent.press(view.getByText("Start the story"));
+  expect(view.getByLabelText("Starting your story")).toBeTruthy();
+  expect(view.queryByText("Start the story")).toBeNull();
+  expect(view.queryByLabelText("Step 1 of 3: World")).toBeNull();
   (useConvexConnectionState as jest.Mock).mockReturnValue({
     ...connected,
     isWebSocketConnected: false,
     inflightMutations: 1,
   });
-  const view = await render(<HomeScreen />);
+  await view.rerender(<Workshop />);
+  await act(() => jest.advanceTimersByTime(10_000));
+  expect(view.queryByText("Try connecting again")).toBeNull();
+  expect(view.getByText(/Waiting for your pending request/)).toBeTruthy();
+  expect(mockCreateStory).toHaveBeenCalledTimes(1);
+  await act(() => finish("story_pending"));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+});
+
+it("replaces an unresolved spinner with recovery and retains the draft through a client remount", async () => {
+  jest.mocked(useQuery).mockReturnValue(undefined);
+  (useConvexConnectionState as jest.Mock).mockReturnValue({
+    ...connected,
+    isWebSocketConnected: false,
+  });
+  const view = await render(<Workshop />);
+  await nameHero(view);
+  await fireEvent.press(view.getByText("Recent stories"));
+  expect(view.getByLabelText("Loading recent stories")).toBeTruthy();
+  await act(() => jest.advanceTimersByTime(10_000));
+  expect(view.queryByLabelText("Loading recent stories")).toBeNull();
+  expect(view.getByText(/Cannot connect to the story server/)).toBeTruthy();
+  expect(view.getByText(/192.168.50.176:3210/)).toBeTruthy();
+  await fireEvent.press(view.getByText("Try connecting again"));
+  expect(mockReconnect).toHaveBeenCalledTimes(1);
+  (useConvexConnectionState as jest.Mock).mockReturnValue(connected);
+  jest.mocked(useQuery).mockReturnValue([]);
+  await view.rerender(<Workshop clientVersion={1} />);
+  expect(view.getByDisplayValue("Mira")).toBeTruthy();
+  expect(view.queryByText(/Cannot connect/)).toBeNull();
+});
+
+it("allows local choices offline while blocking story creation", async () => {
+  (useConvexConnectionState as jest.Mock).mockReturnValue({
+    ...connected,
+    isWebSocketConnected: false,
+  });
+  const view = await render(<Workshop />);
+  await packBag(view);
+  expect(view.getByText("Mira")).toBeTruthy();
+  expect(view.getByRole("button", { name: "Start the story" })).toBeDisabled();
+  expect(
+    view.getByText("Connect to the story server before starting a story."),
+  ).toBeTruthy();
+  expect(mockCreateStory).not.toHaveBeenCalled();
+});
+
+it("reports a stalled query even when its socket is connected", async () => {
+  jest.mocked(useQuery).mockReturnValue(undefined);
+  const view = await render(<Workshop />);
+  await act(() => jest.advanceTimersByTime(10_000));
+  expect(view.getByText(/taking too long to respond/)).toBeTruthy();
+});
+
+it("keeps cached stories when a reconnect query resets and refuses to discard queued writes", async () => {
+  jest
+    .mocked(useQuery)
+    .mockReturnValue([
+      { _id: "story_1", title: "The Windy Kite", totalChapters: 5 },
+    ]);
+  const view = await render(<Workshop />);
+  await fireEvent.press(view.getByText("Recent stories"));
+  jest.mocked(useQuery).mockReturnValue(undefined);
+  (useConvexConnectionState as jest.Mock).mockReturnValue({
+    ...connected,
+    isWebSocketConnected: false,
+    inflightMutations: 1,
+  });
+  await view.rerender(<Workshop />);
   await act(() => jest.advanceTimersByTime(10_000));
   expect(view.getByText("The Windy Kite")).toBeTruthy();
+  expect(view.queryByLabelText("Loading recent stories")).toBeNull();
   expect(view.queryByText("Try connecting again")).toBeNull();
   expect(view.getByText(/Waiting for your pending request/)).toBeTruthy();
 });

@@ -1,13 +1,47 @@
 # Storybook Workshop — implementation plan
 
 Prepared 2026-11-08 against the current Expo/Convex app and
-[storybook-workshop.figcraft](./storybook-workshop.figcraft). This is a proposed
-implementation, not a record of completed app changes.
+[storybook-workshop.figcraft](./storybook-workshop.figcraft). The numbered
+sections describe the target implementation; completed work is tracked below.
 
 Revised after product feedback: Convex owns the available choices and each
 story's selected values. The shelves offer starting ideas; children can also
 describe their own character, outfit, quirk or extra details by speaking or
 typing. This supersedes the original source-code catalogue/no-migration plan.
+
+## Implementation progress — 2026-11-08
+
+**W1 foundation is implemented.** The setup route now composes World → Hero →
+Backpack, with Character → Outfit → Quirk → Name tabs. A session-scoped reducer
+and `SetupProvider` sit outside the backend subtree, preserving choices across
+route navigation and backend remounts. Both names start empty; a blank hero name
+returns the child to naming. Keep flags, direct world choices, the three-item
+starter bag, optional author credit and recent stories remain available.
+
+Shared tokens, bundled Poppins/Source Serif 4 fonts, a safe-area/keyboard-aware
+shell, buttons and choice tiles provide the initial workshop presentation.
+Font failure or a 2.5-second loading timeout lets the app open. Creation has a
+duplicate-request guard and a stable pending view; failures retain the draft,
+and successful navigation resets it. Connection recovery preserves cached
+recent stories and refuses to discard pending writes. Story queries and
+chapter/export/delivery operations are extracted into `useStoryWorkshop`;
+the existing story UI and Convex workflow remain in use.
+
+**The current setup still uses the existing source catalogue and legacy
+`stories.create` contract.** `features/setup/catalog.ts` is an explicit W1
+adapter, not a fallback for a failed database query. No schema or deployment
+change is required for this slice. W2/W3 will replace the adapter with seeded
+Convex records, revision references, server resolution and saved snapshots.
+The expanded shelves, Shuffle, optional gender, layered artwork, full keyboard
+shelf navigation, custom/spoken ideas and themed story screens remain pending.
+
+Verification: `npm run check` passes (38 frontend/delivery tests and 142 backend
+tests), and `npx expo export --platform all` compiles web, iOS and Android.
+Regression coverage includes guarded navigation, creation payloads/failure/
+pending states, offline browsing, retained cached stories, backend remounts,
+font failure/timeouts and the existing chapter/export/save recovery paths.
+No paid generation calls were made. Real-device keyboard, focus, screen-reader,
+sharing and visual acceptance checks have not been performed for this slice.
 
 ## 1. Outcome and scope
 

@@ -75,6 +75,8 @@ collecting a report, finding a trace, health checks, purge, usage and receipts.
 maps the revised FigCraft world, hero and chapter screens to the current Expo/Convex
 app, including a Convex-owned catalogue, saved selection snapshots, spoken or
 typed custom hero ideas, assets, delivery slices and acceptance checks.
+The W1 foundation is implemented; the plan records verified scope and the
+remaining catalogue, artwork, custom-input and story-screen work.
 
 ---
 
