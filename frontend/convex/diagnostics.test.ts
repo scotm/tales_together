@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -258,8 +258,9 @@ test("health reports stuck work, quota and retention backlog", async () => {
 
 test("purge removes one story's diagnostics and leaves the other story alone", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
   const makeStory = (title: string) =>
-    t.mutation(api.stories.create, {
+    t.mutation(internal.stories.create, {
       title,
       setting: "The seaside",
       centralProblem: "A lost kite",

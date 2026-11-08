@@ -1,11 +1,12 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { createGeminiProvider } from "./llm/gemini";
 import { getTextProvider } from "./llm/provider";
 import schema from "./schema";
 
+vi.mock("./llm/moderation", () => ({ moderate: async () => ({ ok: true }) }));
 vi.mock("./llm/provider", () => ({ getTextProvider: vi.fn() }));
 vi.mock("./lib/config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/config")>()),
@@ -21,7 +22,8 @@ afterEach(() => {
 
 async function seed() {
   const t = convexTest(schema, modules);
-  const storyId = await t.mutation(api.stories.create, {
+  await t.mutation(internal.migrations.seedCatalog, {});
+  const storyId = await t.mutation(internal.stories.create, {
     title: "The Windy Kite",
     setting: "The seaside",
     centralProblem: "A lost kite",

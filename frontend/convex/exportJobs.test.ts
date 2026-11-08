@@ -23,7 +23,8 @@ afterEach(() => {
 
 async function seed() {
   const t = convexTest(schema, modules);
-  const storyId = await t.mutation(api.stories.create, {
+  await t.mutation(internal.migrations.seedCatalog, {});
+  const storyId = await t.mutation(internal.stories.create, {
     title: "Kites",
     setting: "The seaside",
     centralProblem: "A lost kite",

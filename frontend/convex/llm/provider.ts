@@ -14,6 +14,8 @@ export interface TextRequest {
   /** JSON Schema for structured output. Omitted for free-form prose. */
   jsonSchema?: Record<string, unknown>;
   maxTokens?: number;
+  timeoutMs?: number;
+  maxAttempts?: number;
 }
 
 export type ProviderPurpose = "prose" | "structured";

@@ -57,6 +57,8 @@ export function createGeminiProvider(options: {
         url,
         fetchImpl: options.fetchImpl,
         progress,
+        timeoutMs: request.timeoutMs,
+        maxAttempts: request.maxAttempts,
         init: {
           method: "POST",
           headers: {

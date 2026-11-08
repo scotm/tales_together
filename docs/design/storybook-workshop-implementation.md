@@ -1,13 +1,98 @@
 # Storybook Workshop — implementation plan
 
 Prepared 2026-11-08 against the current Expo/Convex app and
-[storybook-workshop.figcraft](./storybook-workshop.figcraft). This is a proposed
-implementation, not a record of completed app changes.
+[storybook-workshop.figcraft](./storybook-workshop.figcraft). The numbered
+sections describe the target implementation; completed work is tracked below.
 
 Revised after product feedback: Convex owns the available choices and each
 story's selected values. The shelves offer starting ideas; children can also
 describe their own character, outfit, quirk or extra details by speaking or
 typing. This supersedes the original source-code catalogue/no-migration plan.
+
+## Implementation progress — 2026-11-08
+
+**W1 foundation is implemented.** The setup route now composes World → Hero →
+Backpack, with Character → Outfit → Quirk → Name tabs. A session-scoped reducer
+and `SetupProvider` sit outside the backend subtree, preserving choices across
+route navigation and backend remounts. Both names start empty; a blank hero name
+returns the child to naming. Keep flags, direct world choices, the three-item
+starter bag, optional author credit and recent stories remain available.
+
+Shared tokens, bundled Poppins/Source Serif 4 fonts, a safe-area/keyboard-aware
+shell, buttons and choice tiles provide the initial workshop presentation.
+Font failure or a 2.5-second loading timeout lets the app open. Creation has a
+duplicate-request guard and a stable pending view; failures retain the draft,
+and successful navigation resets it. Connection recovery preserves cached
+recent stories and refuses to discard pending writes. Story queries and
+chapter/export/delivery operations are extracted into `useStoryWorkshop`;
+the existing story UI and Convex workflow remain in use.
+
+**W2 catalogue/art and the curated W3 creation path are implemented.** Convex
+now owns 62 revisioned options. Internal seeding/publishing/withdrawal preserves
+stable IDs and prompt fragments; setup pins references rather than silently
+switching revisions. `stories.createFromSetup` resolves every reference on the
+server and stores immutable world/bag and hero snapshots. The legacy free-form creation
+endpoint is now internal, and the story screen reads item
+labels from the saved inventory. There is no source-catalogue runtime fallback.
+
+The shelves now show all 16 characters, 16 outfits and 16 quirks, with category
+Shuffle, saved scroll offsets, web radio-grid keys and optional Kid Explorer
+gender. New 300-square SVG masters cover all four settings, four problems and
+six items alongside the existing 48 hero assets. A repeatable local build makes
+62 portable PNGs, the Metro manifest and six review sheets. All 256 seed
+character/outfit pairings and all quirk/world/item icons were visually reviewed;
+the detective master now has its checked coat and magnifying glass. Storage
+previews allow later catalogue art without a client release; unknown/failed art
+has a labelled neutral fallback.
+
+The additive schema/functions and seed are deployed locally. The seed inserted
+62 rows. An optional exact-match backfill added snapshots to one existing story
+and three protagonists; a repeat dry-run found zero remaining matches. It leaves
+uncertain selections, used inventories, existing content and all media intact.
+See the [catalogue runbook](../workshop-catalogue-runbook.md) for commands,
+publishing rules and artwork maintenance.
+
+**W4/W5 custom and spoken ideas and W6/W7 story screens are implemented.**
+Children can type or record up to 20 seconds, edit the transcript, review a
+moderated multi-part proposal and explicitly confirm it. Private capability
+hashes, input/context fingerprints, request deduplication, conservative quotas,
+expiry/cleanup and cancellation guard the server path. Raw recordings are passed
+directly to the bounded Node action, without temporary Storage uploads. Confirmed
+custom descriptions and reviewed words are resolved into durable snapshots;
+unknown art uses neutral/text previews. Preset Shuffle keeps custom text available
+for editing, and dormant gender chips apply only to capable characters.
+
+The moderation stub is replaced by a fail-closed structured classifier for idea
+input/output and chapter pitch/prose. The old free-form creation mutation is
+internal, closing the alternate anonymous route around this boundary. Native
+capture uses `expo-audio`; web uses feature-detected MediaRecorder. The Gemini
+transcription adapter reuses the configured key/fast model (with an optional
+speech-model override), while interpretation retains the existing text-provider
+configuration. No new prose/image vendor, Python service or runtime FFmpeg was
+introduced.
+
+The story route now composes a themed director, five markers, centred serif
+reader and portrait-cover completion. Saved picks, independent writing, actual
+bag states, current/completed navigation, writing/watchdog recovery, persisted
+export stages, coverless/retry paths and save/share retries remain available.
+Four neutral SVG-derived beat illustrations bring the portable asset total to
+66 without image calls per pitch.
+
+Verification: `npm run check` covers 64 frontend/delivery tests and 171 backend
+cases, and web/iOS/Android exports compile. The deployed local synthetic speech
+check completed transcription → moderation → interpretation → moderation in
+about 3.7 seconds, preserving the blue cape, rainbow glasses and star hiccups
+while retaining the curated otter. It created no book or artwork and still
+required review. Regression tests cover capability forgery, stale/altered text
+and context, cancellation, expiry, quotas, format/duration limits, recording
+cleanup on route blur/backgrounding and existing generation/export recovery.
+See the [ideas and story-screen runbook](../workshop-ideas-runbook.md).
+
+Physical device microphone/permissions/sharing, quiet speech/invented names,
+HTTPS iPad capture, browser focus, screen-reader and responsive visual acceptance
+remain outstanding. This synthetic check does not establish recognition quality
+or safety performance with families. Durable draft restoration, custom preview
+generation and backend sequence hardening remain outside these slices.
 
 ## 1. Outcome and scope
 
@@ -88,7 +173,8 @@ Representative references: [world](./exports/workshop-world.png),
 
 ## 3. Current code and the work it supports
 
-Paths in this table are relative to `frontend/`.
+Paths in this table are relative to `frontend/`. This is the pre-workshop
+planning baseline; completed replacements are recorded in the progress section.
 
 | Existing code | Current behaviour | Required change |
 | --- | --- | --- |

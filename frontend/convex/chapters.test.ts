@@ -36,7 +36,8 @@ const extraction = {
 
 async function seedStory() {
   const t = convexTest(schema, modules);
-  const storyId = await t.mutation(api.stories.create, sample);
+  await t.mutation(internal.migrations.seedCatalog, {});
+  const storyId = await t.mutation(internal.stories.create, sample);
   const chapterId = await t.run(async (ctx) => {
     const chapter = (
       await ctx.db

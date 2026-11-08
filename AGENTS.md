@@ -14,8 +14,10 @@ targets, not existing code. Check `frontend/` before building on them.
 
 - `frontend/` — Expo app. Routes in `src/app/` (Expo Router); Convex functions in `convex/`; shared
   code in `src/lib/`. Runs on web, iOS and Android via React Native Web.
-- `frontend/convex/schema.ts` — the only source of truth for the data model. `stories`, `characters`,
-  `chapters`, `diagnosticOperations`, `diagnosticEvents`, `diagnosticReceipts`, `diagnosticQuota`.
+- `frontend/convex/schema.ts` — the only source of truth for the data model.
+  `catalogOptions`, `heroIdeaSessions`, `heroIdeas`, `heroIdeaQuota`, `stories`,
+  `characters`, `chapters`, `diagnosticOperations`, `diagnosticEvents`,
+  `diagnosticReceipts`, `diagnosticQuota`.
 - `design/cover_image/` — standalone SVG cover templates and `generate_cover_image.py`; not wired
   into the app, and its extras (lxml, resvg, TTF fonts) are not installed.
 - `docs/` — product, prompt, backend and EPUB design, plus `decisions.md`.
@@ -34,6 +36,7 @@ Frontend (`cd frontend`, uses `npm`):
 - One backend test: `npx vitest run convex/stories.test.ts`
 - Web build: `npx expo export --platform web` (writes `dist/`).
 - `npx convex deploy` — hosted deployment.
+- `npm run workshop:assets` — generate portable previews from SVG masters.
 
 Root: `make check` (same as `npm run check`).
 
@@ -61,3 +64,16 @@ Root: `make check` (same as `npm run check`).
   binary. Media work stays external.
 - Generated/ignored, never hand-edit or commit: `frontend/node_modules/`, `frontend/.expo/`,
   `frontend/dist/`, `frontend/.env.local`, `frontend/*.tsbuildinfo`.
+
+## Workshop ideas
+
+- Custom parts require a private prepared/confirmed idea; never accept client
+  descriptions or moderation flags as authority. `stories.create` is internal;
+  the app uses `stories.createFromSetup` for curated/custom references.
+- Speech uses direct bounded bytes, not Storage uploads. Keep Node audio parsing
+  out of the UI/V8 bundles and release recording resources on route blur too.
+- Gemini `responseSchema` is an OpenAPI subset: no `additionalProperties`.
+  Enforce unknown-field rejection in local parsers.
+- Voice setup/configuration, limits and device checks are documented in
+  `docs/workshop-ideas-runbook.md`. Browser mic capture needs a secure context;
+  plain HTTP LAN iPad testing keeps typed input available.

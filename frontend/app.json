@@ -35,7 +35,16 @@
           "imageWidth": 76
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Tales Together to record your spoken story idea.",
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

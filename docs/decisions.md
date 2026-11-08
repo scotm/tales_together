@@ -17,6 +17,103 @@ Revisit when:
 
 ---
 
+## Reviewed custom/spoken ideas and workshop story screens — accepted, 2026-11-08
+
+**Decision:** custom input joins one reviewed flow: type or foreground-record,
+edit the words, moderate/interpret, review proposed parts, confirm, then snapshot
+them server-side. Private session capabilities are random 256-bit values stored
+only as hashes. Requests bind reviewed text and current hero references, dedupe,
+expire after 24 hours and cannot publish after cancellation. Global/session
+request-unit reservations bound paid work. The former anonymous free-form create
+endpoint is now internal. Existing saved books need no rewrite.
+
+**Speech:** use the existing Gemini key with inline audio on `generateContent`,
+defaulting to the configured fast model with optional `SPEECH_GEMINI_MODEL`.
+Interpretation/moderation keep the existing text adapter. Native capture adds
+Expo-compatible `expo-audio` with background recording disabled; web uses
+MediaRecorder. The server receives at most 2 MiB/20 seconds (250 ms encoder
+padding), validates actual signatures/metadata and counts Opus packets when
+Chrome omits WebM duration. Node-only `music-metadata` adds no FFmpeg service.
+Recordings are not stored/uploaded; native cache files and mic resources are
+released on stop/cancel, background, unmount and route blur. Editable transcripts
+remain in client memory; reviewed text is persisted only at confirmation.
+
+**Moderation:** the pass-through is replaced with enforced structured model
+classification of custom input/output and chapter pitch/prose. Unknown/malformed
+or unsafe verdicts fail closed. Interpretation is a strict minimal patch with
+no invented name/gender/preferences and a clarification path. The UI keeps
+unsupported custom details in words and never substitutes unrelated art.
+
+**Story UI:** shared workshop tokens now cover real beat cards, a separate write
+action, five chapter markers, recap, inventory, a serif reader and completion.
+Pending selection blocks writing; current/completed markers allow rereading
+without locking anything. Saved writing attempts, export progress/retries and
+ready-file delivery recovery are retained. Neutral beat SVGs need no provider
+calls. The publisher's static media/fonts/providers are unchanged.
+
+**Verified:** mocked regressions cover privacy, strict validation, quotas,
+cancellation/expiry, actual AAC/MP4 and durationless WebM, capture cleanup and
+story recovery. Web/iOS/Android exports compile. A live synthetic recording
+passed transcription, both moderation checks and interpretation in ~3.7 seconds,
+preserving blue cape/rainbow glasses/star hiccups as an outfit/details/quirk
+patch, with the otter unchanged. No story/artwork was generated. Device, browser
+focus/visual, screen-reader, recognition-quality and family safety evaluation
+remain acceptance work; no such evaluation is claimed.
+
+**Gotchas:** Gemini's existing `responseSchema` adapter rejects
+`additionalProperties`; use the supported subset and enforce strictness locally.
+The live check caught this on the first moderation request. Expo keeps route
+components mounted, so unmount cleanup alone does not stop a microphone when
+opening Diagnostics. Plain HTTP LAN browsers cannot capture audio; native or
+trusted HTTPS plus secure backend connectivity is required. Two-attempt
+20/30-second limits keep setup requests within the five-minute watchdog.
+
+See the [ideas runbook](./workshop-ideas-runbook.md),
+[Expo recording API](https://docs.expo.dev/versions/latest/sdk/audio/),
+[Google audio input contract](https://firebase.google.com/docs/ai-logic/analyze-audio)
+and [music-metadata](https://github.com/Borewit/music-metadata).
+
+**Revisit when:** physical-device checks or recognition/moderation evaluation
+change the chosen audio formats, classifier, request limits or preview contract.
+
+## Revisioned workshop catalogue and SVG previews — accepted, 2026-11-08
+
+**Decision:** Convex `catalogOptions` owns the curated choices. Preserve logical
+keys, publish content as immutable revisions and snapshot the resolved selection
+onto new stories/protagonists. Retired revisions remain usable in unfinished
+drafts; safety withdrawal requires explicit replacement. Management functions
+and migrations are internal. An optional bounded backfill adds provenance only
+for exact original-seed matches without rewriting prose, inventory or media.
+Custom/spoken ideas remain separate unfinished work.
+
+**Artwork:** keep editable 300-square SVG masters for all 62 seed choices.
+Generate 600px PNGs and a Metro manifest with the already installed local resvg
+WASM package; no runtime SVG dependency or provider calls. Shared-origin layers
+compose a hero; quirks are separate badges. Storage-backed raster previews can
+publish new art without a client release. Unknown/failed art uses a neutral
+fallback. The 256 character/outfit pairings and quirk/world/item sheets were
+reviewed; detective artwork now matches its checked-coat/magnifying-glass cues.
+These are simplified UI previews, not guarantees about generated illustrations.
+
+**Verified:** the additive schema/functions are deployed locally, with 62 seeded
+rows. The public query exposes no prompt fragments. Backfill added one story
+snapshot and three protagonist snapshots; repeating it found zero matches.
+Automated tests cover revisions, concurrent publication, withdrawal, snapshots,
+backfill, new database items, Storage previews and UI recovery. Web/iOS/Android
+exports compile; device/accessibility/visual acceptance is still outstanding.
+
+**Gotchas:** seed inserts missing keys only; changing a fixture does not update
+a published row. Never directly edit revision content in the dashboard. Publish
+the full replacement content with `expectedRevision` and retain desired optional
+artwork fields. Seed before allowing creation requests from either client
+version: the compatibility endpoint now resolves inventory in Convex too.
+Use `ctx.db.system.get(fileId)` for preview metadata; the installed convex-test
+does not implement the older `storage.getMetadata` syscall. See the
+[catalogue runbook](./workshop-catalogue-runbook.md).
+
+**Revisit when:** custom-idea support, art/content drift, larger catalogues or
+real-device shelf checks require changes to this contract.
+
 ## Convex workshop catalogue and open hero choices — proposed, 2026-11-08
 
 **Direction:** the workshop shelves are curated suggestions stored in Convex,

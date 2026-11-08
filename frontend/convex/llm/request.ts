@@ -165,6 +165,8 @@ function normalizeFailure(
 /** Retry only the HTTP request, never parsing/validation or database writes. */
 export async function requestProviderJson<T>(options: {
   provider: string;
+  timeoutMs?: number;
+  maxAttempts?: number;
   url: string;
   init: RequestInit;
   fetchImpl?: typeof fetch;
@@ -172,11 +174,13 @@ export async function requestProviderJson<T>(options: {
   onResponse?: (response: Response) => void;
 }): Promise<T> {
   const doFetch = options.fetchImpl ?? fetch;
+  const maxAttempts = options.maxAttempts ?? PROVIDER_MAX_ATTEMPTS;
+  const timeoutMs = options.timeoutMs ?? PROVIDER_TIMEOUT_MS;
   for (let attempt = 1; ; attempt += 1) {
     const started = now();
     await callHook(options.progress?.onAttempt, {
       attempt,
-      maxAttempts: PROVIDER_MAX_ATTEMPTS,
+      maxAttempts,
       phase: "started",
     });
 
@@ -197,7 +201,7 @@ export async function requestProviderJson<T>(options: {
             }),
           );
           controller.abort();
-        }, PROVIDER_TIMEOUT_MS);
+        }, timeoutMs);
       });
       const request = async () => {
         const response = await doFetch(options.url, {
@@ -239,7 +243,7 @@ export async function requestProviderJson<T>(options: {
       payload = await Promise.race([request(), timeout]);
       await callHook(options.progress?.onAttempt, {
         attempt,
-        maxAttempts: PROVIDER_MAX_ATTEMPTS,
+        maxAttempts,
         phase: "succeeded",
         status,
         durationMs: now() - started,
@@ -267,10 +271,10 @@ export async function requestProviderJson<T>(options: {
           ),
         )
       : 0;
-    const willRetry = error.retryable && attempt < PROVIDER_MAX_ATTEMPTS;
+    const willRetry = error.retryable && attempt < maxAttempts;
     await callHook(options.progress?.onAttempt, {
       attempt,
-      maxAttempts: PROVIDER_MAX_ATTEMPTS,
+      maxAttempts,
       phase: "failed",
       status: error.status ?? status,
       code: error.code,
@@ -287,7 +291,7 @@ export async function requestProviderJson<T>(options: {
 
     await options.progress?.onRetry?.({
       attempt: attempt + 1,
-      maxAttempts: PROVIDER_MAX_ATTEMPTS,
+      maxAttempts,
       nextRetryAt: Date.now() + delayMs,
     });
     await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
