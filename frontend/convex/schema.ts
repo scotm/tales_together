@@ -1,5 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  catalogContent,
+  heroSetupChoices,
+  storySetupChoices,
+} from "./lib/catalogValidators";
 
 export const readingLevel = v.union(
   v.literal("AGES_4_6"),
@@ -133,6 +138,17 @@ export const directorModifiers = v.object({
 });
 
 export default defineSchema({
+  catalogOptions: defineTable({
+    ...catalogContent,
+    revision: v.number(),
+    active: v.boolean(),
+    withdrawnAt: v.optional(v.number()),
+    createdAt: v.number(),
+    retiredAt: v.optional(v.number()),
+  })
+    .index("by_key_revision", ["key", "revision"])
+    .index("by_category_active_order", ["category", "active", "sortOrder"])
+    .index("by_active", ["active"]),
   stories: defineTable({
     title: v.string(),
     status: storyStatus,
@@ -153,6 +169,7 @@ export default defineSchema({
         usedInChapter: v.optional(v.number()),
       }),
     ),
+    setupChoices: v.optional(storySetupChoices),
     authorName: v.optional(v.string()), // typed credit on the cover and title page
     coverFileId: v.optional(v.id("_storage")),
     epubFileId: v.optional(v.id("_storage")),
@@ -178,6 +195,7 @@ export default defineSchema({
     quirk: v.string(),
     visualDescription: v.string(),
     referenceFileId: v.optional(v.id("_storage")),
+    setupChoices: v.optional(heroSetupChoices),
   }).index("by_story", ["storyId"]),
 
   chapters: defineTable({

@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { CatalogArt } from "@/components/workshop/CatalogArt";
 import { ChoiceTile } from "@/components/workshop/ChoiceTile";
 import { colors, radii, spacing, type } from "@/components/workshop/theme";
 import { WorkshopButton } from "@/components/workshop/WorkshopButton";
-import { labelFor, type WorkshopCatalog } from "./catalog";
+import {
+  available,
+  type ChoiceView,
+  catalogChoice,
+  labelFor,
+  type WorkshopCatalog,
+} from "./catalog";
 import { HeroSummary } from "./HeroStep";
 import {
   ChoiceGrid,
@@ -41,10 +48,10 @@ export function BackpackStep({
   const capacity = catalog.backpackSize;
   const full = draft.packed.length >= capacity;
 
-  function toggle(key: string) {
-    const packed = draft.packed.includes(key);
+  function toggle(option: ChoiceView) {
+    const packed = draft.packed.some((choice) => choice.key === option.key);
     setFullNotice(!packed && full);
-    dispatch({ type: "toggleItem", key, capacity });
+    dispatch({ type: "toggleItem", choice: catalogChoice(option), capacity });
   }
 
   return (
@@ -63,15 +70,28 @@ export function BackpackStep({
           {Array.from({ length: capacity }, (_, index) => {
             const key = draft.packed[index];
             return (
-              <View
+              <Pressable
                 // biome-ignore lint/suspicious/noArrayIndexKey: fixed slots
                 key={index}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  key
+                    ? `Remove ${labelFor(catalog.items, key)}`
+                    : "Empty pocket"
+                }
+                disabled={!key}
+                onPress={() => {
+                  if (key) {
+                    dispatch({ type: "toggleItem", choice: key, capacity });
+                    setFullNotice(false);
+                  }
+                }}
                 style={[styles.slot, key ? styles.slotFilled : null]}
               >
                 <Text style={styles.slotLabel}>
                   {key ? labelFor(catalog.items, key) : "Empty pocket"}
                 </Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -83,13 +103,16 @@ export function BackpackStep({
       </View>
 
       <ChoiceGrid columns={columns} label="Things to pack" multiSelect>
-        {catalog.items.map((item) => (
+        {available(catalog.items).map((item) => (
           <ChoiceTile
-            key={item.key}
+            key={item.optionId}
+            art={<CatalogArt option={item} />}
             role="checkbox"
             label={item.label}
-            selected={draft.packed.includes(item.key)}
-            onPress={() => toggle(item.key)}
+            selected={draft.packed.some(
+              (choice) => choice.optionId === item.optionId,
+            )}
+            onPress={() => toggle(item)}
           />
         ))}
       </ChoiceGrid>
@@ -109,8 +132,8 @@ export function BackpackStep({
       <View style={styles.summary}>
         <Text style={setupStyles.sectionTitle}>Your story so far</Text>
         <Text style={styles.summaryLine}>
-          {labelFor(catalog.settings, draft.setting.key)} ·{" "}
-          {labelFor(catalog.problems, draft.problem.key)}
+          {labelFor(catalog.settings, draft.setting)} ·{" "}
+          {labelFor(catalog.problems, draft.problem)}
         </Text>
         <HeroSummary catalog={catalog} />
       </View>

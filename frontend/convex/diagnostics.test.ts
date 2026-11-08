@@ -258,6 +258,7 @@ test("health reports stuck work, quota and retention backlog", async () => {
 
 test("purge removes one story's diagnostics and leaves the other story alone", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
   const makeStory = (title: string) =>
     t.mutation(api.stories.create, {
       title,

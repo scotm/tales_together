@@ -1,0 +1,399 @@
+{
+  "characters": [
+    {
+      "id": "hero_otter",
+      "label": "Scruffy River Otter",
+      "promptFragment": "a small scruffy brown river otter with bright curious eyes and long whiskers",
+      "displayLabel": "River otter",
+      "asset": "assets/characters/hero_otter.svg",
+      "artIndex": 0
+    },
+    {
+      "id": "hero_badger",
+      "label": "Grumpy Little Badger",
+      "promptFragment": "a stout, slightly grumpy black-and-white woodland badger with fluffy ears",
+      "displayLabel": "Little badger",
+      "asset": "assets/characters/hero_badger.svg",
+      "artIndex": 1
+    },
+    {
+      "id": "hero_robot",
+      "label": "Rusty Clockwork Robot",
+      "promptFragment": "a small round copper clockwork robot with glowing warm lightbulb eyes and a wind-up key on its back",
+      "displayLabel": "Clockwork robot",
+      "asset": "assets/characters/hero_robot.svg",
+      "artIndex": 2
+    },
+    {
+      "id": "hero_kid",
+      "label": "Brave Kid Explorer",
+      "promptFragment": "an energetic 8-year-old child explorer with messy hair, plaster on one knee, and a wide grin",
+      "displayLabel": "Kid explorer",
+      "asset": "assets/characters/hero_kid.svg",
+      "artIndex": 3
+    },
+    {
+      "id": "hero_fox",
+      "label": "Red fox",
+      "displayLabel": "Red fox",
+      "promptFragment": "a small russet-red fox with a cream muzzle, pointed ears and a bushy white-tipped tail",
+      "asset": "assets/characters/hero_fox.svg",
+      "artIndex": 4
+    },
+    {
+      "id": "hero_rabbit",
+      "label": "Moon rabbit",
+      "displayLabel": "Moon rabbit",
+      "promptFragment": "a small soft silver rabbit with long upright ears, a round tail and bright curious eyes",
+      "asset": "assets/characters/hero_rabbit.svg",
+      "artIndex": 5
+    },
+    {
+      "id": "hero_dragon",
+      "label": "Tiny dragon",
+      "displayLabel": "Tiny dragon",
+      "promptFragment": "a friendly palm-sized mint-green dragon with small wings, a rounded snout and golden horns",
+      "asset": "assets/characters/hero_dragon.svg",
+      "artIndex": 6
+    },
+    {
+      "id": "hero_cat",
+      "label": "Cloud cat",
+      "displayLabel": "Cloud cat",
+      "promptFragment": "a fluffy lilac-grey cat with a cloud-shaped tail, triangular ears and soft pink paws",
+      "asset": "assets/characters/hero_cat.svg",
+      "artIndex": 7
+    },
+    {
+      "id": "hero_mouse",
+      "label": "Brave mouse",
+      "displayLabel": "Brave mouse",
+      "promptFragment": "a tiny warm-grey mouse with large round ears, a pink nose and a long thin tail",
+      "asset": "assets/characters/hero_mouse.svg",
+      "artIndex": 8
+    },
+    {
+      "id": "hero_hedgehog",
+      "label": "Little hedgehog",
+      "displayLabel": "Little hedgehog",
+      "promptFragment": "a small round chestnut hedgehog with soft dark spines and a cream face",
+      "asset": "assets/characters/hero_hedgehog.svg",
+      "artIndex": 9
+    },
+    {
+      "id": "hero_penguin",
+      "label": "Penguin pal",
+      "displayLabel": "Penguin pal",
+      "promptFragment": "a small blue-black penguin with a white belly, orange feet and a cheerful round face",
+      "asset": "assets/characters/hero_penguin.svg",
+      "artIndex": 10
+    },
+    {
+      "id": "hero_frog",
+      "label": "Tree frog",
+      "displayLabel": "Tree frog",
+      "promptFragment": "a small bright green tree frog with large golden eyes and round sticky toe pads",
+      "asset": "assets/characters/hero_frog.svg",
+      "artIndex": 11
+    },
+    {
+      "id": "hero_sloth",
+      "label": "Sleepy sloth",
+      "displayLabel": "Sleepy sloth",
+      "promptFragment": "a small shaggy caramel sloth with gentle dark eye patches and long curved claws",
+      "asset": "assets/characters/hero_sloth.svg",
+      "artIndex": 12
+    },
+    {
+      "id": "hero_bear",
+      "label": "Little bear",
+      "displayLabel": "Little bear",
+      "promptFragment": "a small honey-brown bear cub with round ears, a cream muzzle and oversized paws",
+      "asset": "assets/characters/hero_bear.svg",
+      "artIndex": 13
+    },
+    {
+      "id": "hero_unicorn",
+      "label": "Pocket unicorn",
+      "displayLabel": "Pocket unicorn",
+      "promptFragment": "a small cream-coloured unicorn with a peach mane, a short spiral golden horn and tiny hooves",
+      "asset": "assets/characters/hero_unicorn.svg",
+      "artIndex": 14
+    },
+    {
+      "id": "hero_alien",
+      "label": "Friendly alien",
+      "displayLabel": "Friendly alien",
+      "promptFragment": "a small turquoise alien with two soft antennae, three round eyes and rounded mitten hands",
+      "asset": "assets/characters/hero_alien.svg",
+      "artIndex": 15
+    }
+  ],
+  "outfits": [
+    {
+      "id": "out_chef",
+      "label": "Crooked Chef Hat & Apron",
+      "promptFragment": "wearing a tall crooked white chef hat and a red polka-dot apron dusted with flour",
+      "displayLabel": "Little chef",
+      "asset": "assets/outfits/out_chef.svg",
+      "artIndex": 0
+    },
+    {
+      "id": "out_detective",
+      "label": "Oversized Detective Coat",
+      "promptFragment": "wearing an oversized checkered detective coat and carrying a brass magnifying glass",
+      "displayLabel": "Detective",
+      "asset": "assets/outfits/out_detective.svg",
+      "artIndex": 1
+    },
+    {
+      "id": "out_space",
+      "label": "Cardboard Spacesuit",
+      "promptFragment": "wearing a homemade silver tin-foil spacesuit with a fishbowl helmet and colourful buttons",
+      "displayLabel": "Cardboard spacesuit",
+      "asset": "assets/outfits/out_space.svg",
+      "artIndex": 2
+    },
+    {
+      "id": "out_pyjamas",
+      "label": "Dinosaur Pyjamas",
+      "promptFragment": "wearing cosy green dinosaur onesie pyjamas with fabric spikes down the hood and fuzzy slippers",
+      "displayLabel": "Dino pyjamas",
+      "asset": "assets/outfits/out_pyjamas.svg",
+      "artIndex": 3
+    },
+    {
+      "id": "out_pirate",
+      "label": "Pirate captain",
+      "displayLabel": "Pirate captain",
+      "promptFragment": "wearing a soft navy pirate hat with a gold star, a striped shirt and a bright red sash",
+      "asset": "assets/outfits/out_pirate.svg",
+      "artIndex": 4
+    },
+    {
+      "id": "out_raincoat",
+      "label": "Raincoat & wellies",
+      "displayLabel": "Raincoat & wellies",
+      "promptFragment": "wearing a sunny yellow hooded raincoat and oversized blue Wellington boots",
+      "asset": "assets/outfits/out_raincoat.svg",
+      "artIndex": 5
+    },
+    {
+      "id": "out_knight",
+      "label": "Shiny knight",
+      "displayLabel": "Shiny knight",
+      "promptFragment": "wearing rounded silver pretend knight armour with a blue star on the breastplate and a soft cloth cape",
+      "asset": "assets/outfits/out_knight.svg",
+      "artIndex": 6
+    },
+    {
+      "id": "out_wizard",
+      "label": "Starry wizard",
+      "displayLabel": "Starry wizard",
+      "promptFragment": "wearing a floppy purple pointed hat and a midnight-blue robe covered in golden stars",
+      "asset": "assets/outfits/out_wizard.svg",
+      "artIndex": 7
+    },
+    {
+      "id": "out_gardener",
+      "label": "Garden overalls",
+      "displayLabel": "Garden overalls",
+      "promptFragment": "wearing green gardening overalls with a seed pocket and a broad straw hat",
+      "asset": "assets/outfits/out_gardener.svg",
+      "artIndex": 8
+    },
+    {
+      "id": "out_superhero",
+      "label": "Superhero cape",
+      "displayLabel": "Superhero cape",
+      "promptFragment": "wearing a coral-red superhero cape and a blue tunic with a gold star on the front",
+      "asset": "assets/outfits/out_superhero.svg",
+      "artIndex": 9
+    },
+    {
+      "id": "out_ballet",
+      "label": "Ballet dancer",
+      "displayLabel": "Ballet dancer",
+      "promptFragment": "wearing a lavender ballet outfit with a soft layered tutu and comfortable dancing slippers",
+      "asset": "assets/outfits/out_ballet.svg",
+      "artIndex": 10
+    },
+    {
+      "id": "out_royal",
+      "label": "Royal cloak",
+      "displayLabel": "Royal cloak",
+      "promptFragment": "wearing a small golden crown and a flowing plum royal cloak with cream trim",
+      "asset": "assets/outfits/out_royal.svg",
+      "artIndex": 11
+    },
+    {
+      "id": "out_aviator",
+      "label": "Sky pilot",
+      "displayLabel": "Sky pilot",
+      "promptFragment": "wearing a tan aviator jacket, round brass goggles and a long mint-green scarf",
+      "asset": "assets/outfits/out_aviator.svg",
+      "artIndex": 12
+    },
+    {
+      "id": "out_firefighter",
+      "label": "Firefighter",
+      "displayLabel": "Firefighter",
+      "promptFragment": "wearing a bright red firefighter helmet and a navy jacket with sunny reflective stripes",
+      "asset": "assets/outfits/out_firefighter.svg",
+      "artIndex": 13
+    },
+    {
+      "id": "out_diver",
+      "label": "Deep-sea diver",
+      "displayLabel": "Deep-sea diver",
+      "promptFragment": "wearing a friendly round diving mask, a blue wetsuit and bright orange flippers",
+      "asset": "assets/outfits/out_diver.svg",
+      "artIndex": 14
+    },
+    {
+      "id": "out_jumper",
+      "label": "Cosy jumper",
+      "displayLabel": "Cosy jumper",
+      "promptFragment": "wearing an oversized peach knitted jumper with a blue zigzag and soft mismatched socks",
+      "asset": "assets/outfits/out_jumper.svg",
+      "artIndex": 15
+    }
+  ],
+  "quirks": [
+    {
+      "id": "quirk_bubbles",
+      "label": "Hiccups Rainbow Bubbles",
+      "promptFragment": "Hiccups floating rainbow bubbles whenever they get nervous or excited",
+      "displayLabel": "Rainbow hiccups",
+      "asset": "assets/quirks/quirk_bubbles.svg",
+      "artIndex": 0
+    },
+    {
+      "id": "quirk_squirrels",
+      "label": "Speaks Fluent Squirrel",
+      "promptFragment": "Can chatter, squeak, and negotiate with any woodland creature or tiny bug",
+      "displayLabel": "Fluent squirrel",
+      "asset": "assets/quirks/quirk_squirrels.svg",
+      "artIndex": 1
+    },
+    {
+      "id": "quirk_broccoli",
+      "label": "Terrified of Broccoli",
+      "promptFragment": "Brave against giant monsters, but dramatically faints at the sight of green vegetables",
+      "displayLabel": "Broccoli fright",
+      "asset": "assets/quirks/quirk_broccoli.svg",
+      "artIndex": 2
+    },
+    {
+      "id": "quirk_pockets",
+      "label": "Bottomless Snack Pockets",
+      "promptFragment": "Always pulls half-melted biscuits or cheese crackers out of their pockets at the worst moment",
+      "displayLabel": "Snack pockets",
+      "asset": "assets/quirks/quirk_pockets.svg",
+      "artIndex": 3
+    },
+    {
+      "id": "quirk_confetti",
+      "label": "Confetti sneezes",
+      "displayLabel": "Confetti sneezes",
+      "promptFragment": "Sneezes a harmless shower of colourful paper confetti whenever surprised",
+      "asset": "assets/quirks/quirk_confetti.svg",
+      "artIndex": 4
+    },
+    {
+      "id": "quirk_rhymes",
+      "label": "Always rhymes",
+      "displayLabel": "Always rhymes",
+      "promptFragment": "Accidentally speaks in funny rhymes whenever explaining an important plan",
+      "asset": "assets/quirks/quirk_rhymes.svg",
+      "artIndex": 5
+    },
+    {
+      "id": "quirk_shadow",
+      "label": "Dancing shadow",
+      "displayLabel": "Dancing shadow",
+      "promptFragment": "Has a friendly shadow that keeps dancing after they stand still",
+      "asset": "assets/quirks/quirk_shadow.svg",
+      "artIndex": 6
+    },
+    {
+      "id": "quirk_cloud",
+      "label": "Pocket raincloud",
+      "displayLabel": "Pocket raincloud",
+      "promptFragment": "Carries a tiny polite raincloud that drizzles only into empty teacups",
+      "asset": "assets/quirks/quirk_cloud.svg",
+      "artIndex": 7
+    },
+    {
+      "id": "quirk_singing",
+      "label": "Nervous singer",
+      "displayLabel": "Nervous singer",
+      "promptFragment": "Sings every sentence like a tiny musical whenever feeling nervous",
+      "asset": "assets/quirks/quirk_singing.svg",
+      "artIndex": 8
+    },
+    {
+      "id": "quirk_giggles",
+      "label": "Floating giggles",
+      "displayLabel": "Floating giggles",
+      "promptFragment": "Floats a few inches off the ground whenever a fit of giggles begins",
+      "asset": "assets/quirks/quirk_giggles.svg",
+      "artIndex": 9
+    },
+    {
+      "id": "quirk_socks",
+      "label": "Arguing socks",
+      "displayLabel": "Arguing socks",
+      "promptFragment": "Wears two talking socks that disagree about which direction to go",
+      "asset": "assets/quirks/quirk_socks.svg",
+      "artIndex": 10
+    },
+    {
+      "id": "quirk_glow",
+      "label": "Glows when shy",
+      "displayLabel": "Glows when shy",
+      "promptFragment": "Glows with a gentle peach light whenever feeling shy or embarrassed",
+      "asset": "assets/quirks/quirk_glow.svg",
+      "artIndex": 11
+    },
+    {
+      "id": "quirk_jokes",
+      "label": "Terrible jokes",
+      "displayLabel": "Terrible jokes",
+      "promptFragment": "Tells wonderfully terrible jokes at exactly the wrong moment",
+      "asset": "assets/quirks/quirk_jokes.svg",
+      "artIndex": 12
+    },
+    {
+      "id": "quirk_pebbles",
+      "label": "Pebble collector",
+      "displayLabel": "Pebble collector",
+      "promptFragment": "Collects oddly shaped pebbles and gives each one an elaborate name",
+      "asset": "assets/quirks/quirk_pebbles.svg",
+      "artIndex": 13
+    },
+    {
+      "id": "quirk_flowers",
+      "label": "Surprise flowers",
+      "displayLabel": "Surprise flowers",
+      "promptFragment": "Sprouts tiny harmless flowers in their hair whenever having a new idea",
+      "asset": "assets/quirks/quirk_flowers.svg",
+      "artIndex": 14
+    },
+    {
+      "id": "quirk_doors",
+      "label": "Greets every door",
+      "displayLabel": "Greets every door",
+      "promptFragment": "Politely introduces themself to every door before trying to open it",
+      "asset": "assets/quirks/quirk_doors.svg",
+      "artIndex": 15
+    }
+  ],
+  "notes": {
+    "status": "Seed source and artwork manifest; runtime choices are revisioned Convex catalogOptions records.",
+    "gender": "Optional for hero_kid only; leave open by default.",
+    "name": "Empty until the final naming step.",
+    "shuffle": "Select a different option in the current category; preserve the other choices and name.",
+    "order": "Stable catalogue order while browsing; shuffle selects a choice, not a new order."
+  }
+}

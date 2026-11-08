@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -24,6 +24,7 @@ const sample = {
 
 test("create seeds five chapters with arc roles in order", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(api.stories.create, sample);
 
   const chapters = await t.run(async (ctx) =>
@@ -46,6 +47,7 @@ test("create seeds five chapters with arc roles in order", async () => {
 
 test("get returns story, chapters and characters", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(api.stories.create, sample);
 
   const result = await t.query(api.stories.get, { storyId });
@@ -62,6 +64,7 @@ test("get returns story, chapters and characters", async () => {
 
 test("create keeps a trimmed typed author name", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(api.stories.create, {
     ...sample,
     authorName: "  Mira  ",
@@ -73,6 +76,7 @@ test("create keeps a trimmed typed author name", async () => {
 
 test("create rejects a backpack that is not exactly three items", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
     t.mutation(api.stories.create, {
@@ -84,6 +88,7 @@ test("create rejects a backpack that is not exactly three items", async () => {
 
 test("create rejects an item that is not in the catalog", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
     t.mutation(api.stories.create, {
@@ -98,6 +103,7 @@ test("create rejects an item that is not in the catalog", async () => {
 
 test("create rejects the same item twice", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
     t.mutation(api.stories.create, {
@@ -113,6 +119,7 @@ test("create rejects the same item twice", async () => {
 
 test("create rejects a blank hero name", async () => {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
     t.mutation(api.stories.create, { ...sample, protagonistName: "  " }),

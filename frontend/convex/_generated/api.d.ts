@@ -19,9 +19,12 @@ import type * as epub_assets from "../epub/assets.js";
 import type * as epub_build from "../epub/build.js";
 import type * as epub_templates from "../epub/templates.js";
 import type * as exportJobs from "../exportJobs.js";
+import type * as fixtures_legacyCatalog from "../fixtures/legacyCatalog.js";
 import type * as imageSamples from "../imageSamples.js";
+import type * as lib_catalogValidators from "../lib/catalogValidators.js";
 import type * as lib_config from "../lib/config.js";
 import type * as lib_diagnostics from "../lib/diagnostics.js";
+import type * as lib_resolveSetup from "../lib/resolveSetup.js";
 import type * as llm_beatCards from "../llm/beatCards.js";
 import type * as llm_compressImage from "../llm/compressImage.js";
 import type * as llm_extraction from "../llm/extraction.js";
@@ -40,6 +43,7 @@ import type * as llm_request from "../llm/request.js";
 import type * as llm_surplusImage from "../llm/surplusImage.js";
 import type * as media from "../media.js";
 import type * as mediaNode from "../mediaNode.js";
+import type * as migrations from "../migrations.js";
 import type * as stories from "../stories.js";
 
 import type {
@@ -60,9 +64,12 @@ declare const fullApi: ApiFromModules<{
   "epub/build": typeof epub_build;
   "epub/templates": typeof epub_templates;
   exportJobs: typeof exportJobs;
+  "fixtures/legacyCatalog": typeof fixtures_legacyCatalog;
   imageSamples: typeof imageSamples;
+  "lib/catalogValidators": typeof lib_catalogValidators;
   "lib/config": typeof lib_config;
   "lib/diagnostics": typeof lib_diagnostics;
+  "lib/resolveSetup": typeof lib_resolveSetup;
   "llm/beatCards": typeof llm_beatCards;
   "llm/compressImage": typeof llm_compressImage;
   "llm/extraction": typeof llm_extraction;
@@ -81,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   "llm/surplusImage": typeof llm_surplusImage;
   media: typeof media;
   mediaNode: typeof mediaNode;
+  migrations: typeof migrations;
   stories: typeof stories;
 }>;
 

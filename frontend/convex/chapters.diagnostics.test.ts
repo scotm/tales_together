@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { createGeminiProvider } from "./llm/gemini";
 import { getTextProvider } from "./llm/provider";
 import schema from "./schema";
@@ -21,6 +21,7 @@ afterEach(() => {
 
 async function seed() {
   const t = convexTest(schema, modules);
+  await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(api.stories.create, {
     title: "The Windy Kite",
     setting: "The seaside",

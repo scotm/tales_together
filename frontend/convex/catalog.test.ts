@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WORLD_PROBLEMS } from "./catalog";
+import { WORLD_PROBLEMS } from "./fixtures/legacyCatalog";
 
 describe("problem titles", () => {
   it("finishes '<hero> and …' without repeating an article", () => {

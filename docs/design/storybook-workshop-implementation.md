@@ -27,21 +27,39 @@ recent stories and refuses to discard pending writes. Story queries and
 chapter/export/delivery operations are extracted into `useStoryWorkshop`;
 the existing story UI and Convex workflow remain in use.
 
-**The current setup still uses the existing source catalogue and legacy
-`stories.create` contract.** `features/setup/catalog.ts` is an explicit W1
-adapter, not a fallback for a failed database query. No schema or deployment
-change is required for this slice. W2/W3 will replace the adapter with seeded
-Convex records, revision references, server resolution and saved snapshots.
-The expanded shelves, Shuffle, optional gender, layered artwork, full keyboard
-shelf navigation, custom/spoken ideas and themed story screens remain pending.
+**W2 catalogue/art and the curated W3 creation path are implemented.** Convex
+now owns 62 revisioned options. Internal seeding/publishing/withdrawal preserves
+stable IDs and prompt fragments; setup pins references rather than silently
+switching revisions. `stories.createFromSetup` resolves every reference on the
+server and stores immutable world/bag and hero snapshots. The legacy creation
+endpoint uses database inventory validation, and the story screen reads item
+labels from the saved inventory. There is no source-catalogue runtime fallback.
 
-Verification: `npm run check` passes (38 frontend/delivery tests and 142 backend
-tests), and `npx expo export --platform all` compiles web, iOS and Android.
-Regression coverage includes guarded navigation, creation payloads/failure/
-pending states, offline browsing, retained cached stories, backend remounts,
-font failure/timeouts and the existing chapter/export/save recovery paths.
-No paid generation calls were made. Real-device keyboard, focus, screen-reader,
-sharing and visual acceptance checks have not been performed for this slice.
+The shelves now show all 16 characters, 16 outfits and 16 quirks, with category
+Shuffle, saved scroll offsets, web radio-grid keys and optional Kid Explorer
+gender. New 300-square SVG masters cover all four settings, four problems and
+six items alongside the existing 48 hero assets. A repeatable local build makes
+62 portable PNGs, the Metro manifest and six review sheets. All 256 seed
+character/outfit pairings and all quirk/world/item icons were visually reviewed;
+the detective master now has its checked coat and magnifying glass. Storage
+previews allow later catalogue art without a client release; unknown/failed art
+has a labelled neutral fallback.
+
+The additive schema/functions and seed are deployed locally. The seed inserted
+62 rows. An optional exact-match backfill added snapshots to one existing story
+and three protagonists; a repeat dry-run found zero remaining matches. It leaves
+uncertain selections, used inventories, existing content and all media intact.
+See the [catalogue runbook](../workshop-catalogue-runbook.md) for commands,
+publishing rules and artwork maintenance.
+
+Verification: the project checks cover 47 frontend/delivery tests and 153 backend
+tests; web, iOS and Android exports compile. This includes creation/recovery,
+concurrent catalogue publishing, preserved old revisions, withdrawal, immutable
+snapshots, new database-only items, storage previews, idempotent backfill,
+expanded shelves, Shuffle, explicit gender and image failure fallbacks. No paid
+generation calls were made. Device keyboard, browser focus, screen-reader,
+sharing and responsive visual acceptance checks remain outstanding.
+Custom/spoken ideas and themed chapter/reading/delivery screens are later work.
 
 ## 1. Outcome and scope
 
@@ -122,7 +140,8 @@ Representative references: [world](./exports/workshop-world.png),
 
 ## 3. Current code and the work it supports
 
-Paths in this table are relative to `frontend/`.
+Paths in this table are relative to `frontend/`. This is the pre-workshop
+planning baseline; completed replacements are recorded in the progress section.
 
 | Existing code | Current behaviour | Required change |
 | --- | --- | --- |

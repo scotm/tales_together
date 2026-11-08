@@ -1,18 +1,14 @@
 import {
-  CONVEYOR_ITEMS,
-  HERO_ARCHETYPES,
-  HERO_OUTFITS,
-  QUIRK_STICKERS,
-  WORLD_PROBLEMS,
-  WORLD_SETTINGS,
-} from "@convex/catalog";
-import {
   createContext,
   type Dispatch,
   type ReactNode,
+  type SetStateAction,
   useContext,
   useReducer,
+  useRef,
+  useState,
 } from "react";
+import type { WorkshopCatalog } from "./catalog";
 import {
   createDraft,
   type DraftDefaults,
@@ -21,49 +17,56 @@ import {
   setupReducer,
 } from "./draft";
 
-// Interim (W1): defaults come from the source catalogue. W2 moves them to
-// Convex catalogue records flagged `isDefault`.
-export const sourceDefaults: DraftDefaults = {
-  setting: WORLD_SETTINGS[0]?.id ?? "",
-  problem: WORLD_PROBLEMS[0]?.id ?? "",
-  character: HERO_ARCHETYPES[0]?.id ?? "",
-  outfit: HERO_OUTFITS[0]?.id ?? "",
-  quirk: QUIRK_STICKERS[0]?.id ?? "",
-  packed: ["item_whisk", "item_jam", "item_kazoo"].filter((id) =>
-    CONVEYOR_ITEMS.some((item) => item.id === id),
-  ),
-};
-
 interface SetupContextValue {
-  draft: SetupDraft;
+  draft: SetupDraft | null;
   dispatch: Dispatch<SetupAction>;
-  defaults: DraftDefaults;
+  catalog: WorkshopCatalog | null;
+  shelfOffsets: Record<string, number>;
+  setCatalog: Dispatch<SetStateAction<WorkshopCatalog | null>>;
 }
-
 const SetupContext = createContext<SetupContextValue | null>(null);
 
-/**
- * Holds one unfinished setup for the running app session. Mount it outside
- * `BackendProvider` so a backend remount during recovery or a
- * trip to Diagnostics cannot erase the child's choices.
- */
+/** Draft and catalogue cache outlive backend recovery and route changes. */
 export function SetupProvider({
   children,
-  defaults = sourceDefaults,
+  defaults,
 }: {
   children: ReactNode;
   defaults?: DraftDefaults;
 }) {
-  const [draft, dispatch] = useReducer(setupReducer, defaults, createDraft);
+  const [draft, dispatch] = useReducer(
+    (draft: SetupDraft | null, action: SetupAction) =>
+      draft
+        ? setupReducer(draft, action)
+        : action.type === "initialize"
+          ? createDraft(action.defaults)
+          : null,
+    defaults ? createDraft(defaults) : null,
+  );
+  const shelfOffsets = useRef<Record<string, number>>({});
+  const [catalog, setCatalog] = useState<WorkshopCatalog | null>(null);
   return (
-    <SetupContext.Provider value={{ draft, dispatch, defaults }}>
+    <SetupContext.Provider
+      value={{
+        draft,
+        dispatch,
+        catalog,
+        setCatalog,
+        shelfOffsets: shelfOffsets.current,
+      }}
+    >
       {children}
     </SetupContext.Provider>
   );
 }
-
-export function useSetupDraft(): SetupContextValue {
+export function useSetupSession(): SetupContextValue {
   const value = useContext(SetupContext);
-  if (!value) throw new Error("useSetupDraft needs a SetupProvider");
+  if (!value) throw new Error("useSetupSession needs a SetupProvider");
   return value;
+}
+export function useSetupDraft() {
+  const value = useSetupSession();
+  if (!value.draft)
+    throw new Error("Load the catalogue before opening the workshop.");
+  return { ...value, draft: value.draft };
 }

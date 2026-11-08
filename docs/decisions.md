@@ -17,6 +17,44 @@ Revisit when:
 
 ---
 
+## Revisioned workshop catalogue and SVG previews — accepted, 2026-11-08
+
+**Decision:** Convex `catalogOptions` owns the curated choices. Preserve logical
+keys, publish content as immutable revisions and snapshot the resolved selection
+onto new stories/protagonists. Retired revisions remain usable in unfinished
+drafts; safety withdrawal requires explicit replacement. Management functions
+and migrations are internal. An optional bounded backfill adds provenance only
+for exact original-seed matches without rewriting prose, inventory or media.
+Custom/spoken ideas remain separate unfinished work.
+
+**Artwork:** keep editable 300-square SVG masters for all 62 seed choices.
+Generate 600px PNGs and a Metro manifest with the already installed local resvg
+WASM package; no runtime SVG dependency or provider calls. Shared-origin layers
+compose a hero; quirks are separate badges. Storage-backed raster previews can
+publish new art without a client release. Unknown/failed art uses a neutral
+fallback. The 256 character/outfit pairings and quirk/world/item sheets were
+reviewed; detective artwork now matches its checked-coat/magnifying-glass cues.
+These are simplified UI previews, not guarantees about generated illustrations.
+
+**Verified:** the additive schema/functions are deployed locally, with 62 seeded
+rows. The public query exposes no prompt fragments. Backfill added one story
+snapshot and three protagonist snapshots; repeating it found zero matches.
+Automated tests cover revisions, concurrent publication, withdrawal, snapshots,
+backfill, new database items, Storage previews and UI recovery. Web/iOS/Android
+exports compile; device/accessibility/visual acceptance is still outstanding.
+
+**Gotchas:** seed inserts missing keys only; changing a fixture does not update
+a published row. Never directly edit revision content in the dashboard. Publish
+the full replacement content with `expectedRevision` and retain desired optional
+artwork fields. Seed before allowing creation requests from either client
+version: the compatibility endpoint now resolves inventory in Convex too.
+Use `ctx.db.system.get(fileId)` for preview metadata; the installed convex-test
+does not implement the older `storage.getMetadata` syscall. See the
+[catalogue runbook](./workshop-catalogue-runbook.md).
+
+**Revisit when:** custom-idea support, art/content drift, larger catalogues or
+real-device shelf checks require changes to this contract.
+
 ## Convex workshop catalogue and open hero choices — proposed, 2026-11-08
 
 **Direction:** the workshop shelves are curated suggestions stored in Convex,

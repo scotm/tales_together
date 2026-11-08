@@ -1,88 +1,138 @@
-import {
-  BACKPACK_SIZE,
-  type CatalogOption,
-  CONVEYOR_ITEMS,
-  HERO_ARCHETYPES,
-  HERO_OUTFITS,
-  QUIRK_STICKERS,
-  WORLD_PROBLEMS,
-  WORLD_SETTINGS,
-} from "@convex/catalog";
-import type { SetupDraft } from "./draft";
+import { api } from "@convex/_generated/api";
+import { useConvexConnectionState, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
+import { useEffect, useState } from "react";
+import { useQueryDiagnostics } from "@/lib/diagnostics/query";
+import type { CatalogChoice, DraftDefaults, SetupDraft } from "./draft";
+import { useSetupSession } from "./SetupProvider";
 
-/** Display data for shelves; legacy prompt composition stays in the adapter. */
-export interface ChoiceView {
-  key: string;
-  label: string;
-}
-
-export interface WorkshopCatalog {
+type CatalogResult = FunctionReturnType<typeof api.catalog.listChoices>;
+export type ChoiceView = CatalogResult["options"][number];
+export interface WorkshopCatalog extends CatalogResult {
   settings: ChoiceView[];
   problems: ChoiceView[];
   characters: ChoiceView[];
   outfits: ChoiceView[];
   quirks: ChoiceView[];
   items: ChoiceView[];
-  backpackSize: number;
 }
 
-const view = (option: CatalogOption): ChoiceView => ({
-  key: option.id,
-  label: option.label,
-});
-
-/**
- * Interim (W1) catalogue read from source. W2 replaces this hook with the
- * Convex `catalog.listChoices` query and adds loading/empty/failed states;
- * screens consume only `WorkshopCatalog`, so they do not change.
- */
-const sourceCatalog: WorkshopCatalog = {
-  settings: WORLD_SETTINGS.map(view),
-  problems: WORLD_PROBLEMS.map(view),
-  characters: HERO_ARCHETYPES.map(view),
-  outfits: HERO_OUTFITS.map(view),
-  quirks: QUIRK_STICKERS.map(view),
-  items: CONVEYOR_ITEMS.map(view),
-  backpackSize: BACKPACK_SIZE,
-};
-
-export function useWorkshopCatalog(): WorkshopCatalog {
-  return sourceCatalog;
-}
-
-export function labelFor(choices: ChoiceView[], key: string): string {
-  return choices.find((choice) => choice.key === key)?.label ?? key;
-}
-
-/**
- * Interim (W1) payload for the legacy `stories.create` mutation, which still
- * accepts client-composed prompt text. W3 replaces it with
- * `stories.createFromSetup`, where the server resolves every reference.
- */
-export function legacyCreateArgs(draft: SetupDraft) {
-  const find = <T extends CatalogOption>(options: T[], key: string): T => {
-    const option = options.find((entry) => entry.id === key);
-    if (!option) throw new Error("One of your choices is no longer available.");
-    return option;
-  };
-  const heroName = draft.heroName.trim();
-  const setting = find(WORLD_SETTINGS, draft.setting.key);
-  const problem = find(WORLD_PROBLEMS, draft.problem.key);
-  const character = find(HERO_ARCHETYPES, draft.character.key);
-  const outfit = find(HERO_OUTFITS, draft.outfit.key);
-  const quirk = find(QUIRK_STICKERS, draft.quirk.key);
-  const authorName = draft.authorName.trim();
+export function groupCatalog(result: CatalogResult): WorkshopCatalog {
+  const group = (category: ChoiceView["category"]) =>
+    result.options.filter((row) => row.category === category);
   return {
-    title: `${heroName} and ${problem.titleSuffix}`,
-    setting: setting.promptFragment,
-    centralProblem: problem.promptFragment,
-    protagonistName: heroName,
-    protagonistQuirk: quirk.promptFragment,
-    visualDescription: `${character.promptFragment} ${outfit.promptFragment}`,
-    authorName: authorName || undefined,
-    backpackItems: draft.packed.map((key) => ({
-      id: key,
-      name: find(CONVEYOR_ITEMS, key).label,
-    })),
+    ...result,
+    settings: group("setting"),
+    problems: group("problem"),
+    characters: group("character"),
+    outfits: group("outfit"),
+    quirks: group("quirk"),
+    items: group("item"),
   };
+}
+export const available = (choices: ChoiceView[]) =>
+  choices.filter((row) => row.active && !row.withdrawn);
+export const catalogChoice = (option: ChoiceView): CatalogChoice => ({
+  kind: "catalog",
+  key: option.key,
+  optionId: option.optionId,
+  revision: option.revision,
+});
+export const reference = (choice: CatalogChoice) => ({
+  optionId: choice.optionId,
+  revision: choice.revision,
+});
+export function selectedChoices(draft: SetupDraft) {
+  return [
+    draft.setting,
+    draft.problem,
+    draft.character,
+    draft.outfit,
+    draft.quirk,
+    ...draft.packed,
+  ];
+}
+export function catalogDefaults(
+  catalog: WorkshopCatalog,
+): DraftDefaults | null {
+  const first = (options: ChoiceView[]) => {
+    const active = available(options);
+    return active.find((row) => row.isDefault) ?? active[0];
+  };
+  const singles = [
+    catalog.settings,
+    catalog.problems,
+    catalog.characters,
+    catalog.outfits,
+    catalog.quirks,
+  ].map(first);
+  const items = available(catalog.items);
+  const packed = [
+    ...items.filter((row) => row.isDefault),
+    ...items.filter((row) => !row.isDefault),
+  ].slice(0, catalog.backpackSize);
+  if (singles.some((row) => !row) || packed.length !== catalog.backpackSize)
+    return null;
+  const [setting, problem, character, outfit, quirk] = singles as [
+    ChoiceView,
+    ChoiceView,
+    ChoiceView,
+    ChoiceView,
+    ChoiceView,
+  ];
+  return {
+    setting: catalogChoice(setting),
+    problem: catalogChoice(problem),
+    character: catalogChoice(character),
+    outfit: catalogChoice(outfit),
+    quirk: catalogChoice(quirk),
+    packed: packed.map(catalogChoice),
+  };
+}
+
+/** One subscription for active options plus pinned revisions; cache outlives backend remounts. */
+export function useWorkshopCatalog() {
+  const { draft, dispatch, catalog, setCatalog } = useSetupSession();
+  const pinned = draft
+    ? selectedChoices(draft).map((choice) => choice.optionId)
+    : [];
+  const result = useQuery(api.catalog.listChoices, { pinned });
+  const connection = useConvexConnectionState();
+  useQueryDiagnostics(
+    "catalog.listChoices",
+    result,
+    connection.isWebSocketConnected,
+  );
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    if (result !== undefined) setCatalog(groupCatalog(result));
+  }, [result, setCatalog]);
+  useEffect(() => {
+    if (draft || !catalog) return;
+    const defaults = catalogDefaults(catalog);
+    if (defaults) dispatch({ type: "initialize", defaults });
+  }, [draft, catalog, dispatch]);
+  useEffect(() => {
+    setTimedOut(false);
+    if (result !== undefined) return;
+    const timer = setTimeout(() => setTimedOut(true), 10_000);
+    return () => clearTimeout(timer);
+  }, [result]);
+  return {
+    catalog,
+    ready: Boolean(draft && catalog),
+    timedOut,
+    empty: Boolean(catalog && !catalogDefaults(catalog)),
+    pending: result === undefined,
+  };
+}
+
+export function labelFor(choices: ChoiceView[], choice: CatalogChoice): string {
+  return (
+    choices.find((row) => row.optionId === choice.optionId)?.label ??
+    "Unavailable choice"
+  );
+}
+export function choiceFor(choices: ChoiceView[], choice: CatalogChoice) {
+  return choices.find((row) => row.optionId === choice.optionId);
 }

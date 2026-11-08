@@ -390,7 +390,7 @@
     }
   ],
   "notes": {
-    "status": "Design catalogue; not yet wired into the Expo app.",
+    "status": "Seed source and artwork manifest; runtime choices are revisioned Convex catalogOptions records.",
     "gender": "Optional for hero_kid only; leave open by default.",
     "name": "Empty until the final naming step.",
     "shuffle": "Select a different option in the current category; preserve the other choices and name.",

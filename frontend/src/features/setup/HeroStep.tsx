@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
   Text,
   type TextInputInstance,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { ChoiceTile } from "@/components/workshop/ChoiceTile";
+import { ChoiceShelf } from "@/components/workshop/ChoiceShelf";
+import { HeroPreview } from "@/components/workshop/HeroPreview";
 import {
   colors,
   layout,
@@ -15,20 +17,20 @@ import {
   type,
 } from "@/components/workshop/theme";
 import { WorkshopButton } from "@/components/workshop/WorkshopButton";
-import { type ChoiceView, labelFor, type WorkshopCatalog } from "./catalog";
 import {
+  available,
+  type ChoiceView,
   catalogChoice,
+  choiceFor,
+  labelFor,
+  type WorkshopCatalog,
+} from "./catalog";
+import {
   type HeroPart,
   type HeroStep as HeroStepName,
   hasHeroName,
 } from "./draft";
-import {
-  ChoiceGrid,
-  Field,
-  StepHeading,
-  setupStyles,
-  useShelfColumns,
-} from "./parts";
+import { Field, StepHeading, setupStyles, useShelfColumns } from "./parts";
 import { useSetupDraft } from "./SetupProvider";
 
 const TABS: { step: HeroStepName; label: string }[] = [
@@ -73,7 +75,9 @@ export function HeroStep({
   onBack: () => void;
   onPackBag: () => void;
 }) {
-  const { draft, dispatch } = useSetupDraft();
+  const { draft, dispatch, shelfOffsets } = useSetupDraft();
+  const { width } = useWindowDimensions();
+  const [announcement, setAnnouncement] = useState("");
   const columns = useShelfColumns();
   const nameRef = useRef<TextInputInstance>(null);
   const tabIndex = TABS.findIndex((tab) => tab.step === draft.heroStep);
@@ -119,52 +123,148 @@ export function HeroStep({
         })}
       </View>
 
-      <HeroSummary catalog={catalog} />
-
-      {draft.heroStep === "name" ? (
-        <View style={styles.name}>
-          <Text accessibilityRole="header" style={setupStyles.sectionTitle}>
-            What is your hero called?
-          </Text>
-          <Field
-            inputRef={nameRef}
-            label="Hero name"
-            placeholder="Hero name"
-            value={draft.heroName}
-            onChangeText={(value) => dispatch({ type: "setHeroName", value })}
-            autoCapitalize="words"
-            maxLength={40}
-            returnKeyType="done"
-            onSubmitEditing={onPackBag}
-            error={nameGuarded && !named ? NAME_GUARD : null}
-            hint={named ? undefined : NAME_REQUIRED}
-          />
+      <View
+        style={{
+          flexDirection:
+            width >= layout.splitMinWidth ? "row-reverse" : "column",
+          gap: spacing.xl,
+          alignItems: "stretch",
+        }}
+      >
+        <View
+          style={{ flexBasis: width >= layout.splitMinWidth ? 320 : undefined }}
+        >
+          <HeroSummary catalog={catalog} />
         </View>
-      ) : (
-        <View style={styles.shelf}>
-          <Text accessibilityRole="header" style={setupStyles.sectionTitle}>
-            {SHELVES[draft.heroStep].title}
-          </Text>
-          <Text style={setupStyles.muted}>{SHELVES[draft.heroStep].lede}</Text>
-          <ChoiceGrid columns={columns} label={SHELVES[draft.heroStep].title}>
-            {shelves[draft.heroStep].map((option) => (
-              <ChoiceTile
-                key={option.key}
-                label={option.label}
-                selected={draft[draft.heroStep as HeroPart].key === option.key}
-                onPress={() =>
+        <View style={{ flex: 1, gap: spacing.md }}>
+          {draft.heroStep === "name" ? (
+            <View style={styles.name}>
+              <Text accessibilityRole="header" style={setupStyles.sectionTitle}>
+                What is your hero called?
+              </Text>
+              <Field
+                inputRef={nameRef}
+                label="Hero name"
+                placeholder="Hero name"
+                value={draft.heroName}
+                onChangeText={(value) =>
+                  dispatch({ type: "setHeroName", value })
+                }
+                autoCapitalize="words"
+                maxLength={40}
+                returnKeyType="done"
+                onSubmitEditing={onPackBag}
+                error={nameGuarded && !named ? NAME_GUARD : null}
+                hint={named ? undefined : NAME_REQUIRED}
+              />
+            </View>
+          ) : (
+            <View style={styles.shelf}>
+              <Text accessibilityRole="header" style={setupStyles.sectionTitle}>
+                {SHELVES[draft.heroStep].title}
+              </Text>
+              <Text style={setupStyles.muted}>
+                {SHELVES[draft.heroStep].lede}
+              </Text>
+              <ChoiceShelf
+                category={draft.heroStep}
+                label={SHELVES[draft.heroStep].title}
+                options={available(shelves[draft.heroStep])}
+                selectedId={draft[draft.heroStep].optionId}
+                columns={columns}
+                offsets={shelfOffsets}
+                onSelect={(option) =>
                   dispatch({
                     type: "selectHero",
                     part: draft.heroStep as HeroPart,
-                    choice: catalogChoice(option.key),
+                    choice: catalogChoice(option),
                   })
                 }
               />
-            ))}
-          </ChoiceGrid>
+              <WorkshopButton
+                label="Shuffle"
+                variant="shuffle"
+                disabled={
+                  available(shelves[draft.heroStep]).filter(
+                    (row) =>
+                      row.optionId !==
+                      draft[draft.heroStep as HeroPart].optionId,
+                  ).length === 0
+                }
+                onPress={() => {
+                  const options = available(
+                    shelves[draft.heroStep as HeroPart],
+                  ).filter(
+                    (row) =>
+                      row.optionId !==
+                      draft[draft.heroStep as HeroPart].optionId,
+                  );
+                  const option =
+                    options[Math.floor(Math.random() * options.length)];
+                  if (option) {
+                    dispatch({
+                      type: "selectHero",
+                      part: draft.heroStep as HeroPart,
+                      choice: catalogChoice(option),
+                    });
+                    setAnnouncement(`Selected ${option.displayLabel}`);
+                  }
+                }}
+              />
+              <Text accessibilityLiveRegion="polite" style={setupStyles.muted}>
+                {announcement}
+              </Text>
+              {draft.heroStep === "character" &&
+              choiceFor(catalog.characters, draft.character)?.supportsGender ? (
+                <View style={{ gap: spacing.sm }}>
+                  <Text style={setupStyles.sectionTitle}>
+                    Gender (optional)
+                  </Text>
+                  <View
+                    accessibilityRole="radiogroup"
+                    accessibilityLabel="Hero gender"
+                    style={styles.tabs}
+                  >
+                    {(["open", "girl", "boy", "non-binary"] as const).map(
+                      (value) => (
+                        <Pressable
+                          key={value}
+                          accessibilityRole="radio"
+                          accessibilityState={{
+                            checked: draft.kidGender === value,
+                          }}
+                          onPress={() =>
+                            dispatch({ type: "setKidGender", value })
+                          }
+                          style={[
+                            styles.tab,
+                            draft.kidGender === value && styles.tabActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.tabLabel,
+                              draft.kidGender === value && styles.tabLabelOn,
+                            ]}
+                          >
+                            {value === "open"
+                              ? "Leave open"
+                              : value === "non-binary"
+                                ? "Non-binary"
+                                : value === "girl"
+                                  ? "Girl"
+                                  : "Boy"}
+                          </Text>
+                        </Pressable>
+                      ),
+                    )}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
-      )}
-
+      </View>
       <View style={setupStyles.actions}>
         <WorkshopButton
           label="← Back"
@@ -195,17 +295,33 @@ export function HeroStep({
   );
 }
 
-/** One concise text summary of the hero; portrait art arrives with W2. */
+/** Decorative layered portrait with one concise accessible text summary. */
 export function HeroSummary({ catalog }: { catalog: WorkshopCatalog }) {
   const { draft } = useSetupDraft();
   const name = draft.heroName.trim();
   const parts = [
-    labelFor(catalog.characters, draft.character.key),
-    draft.revealed.outfit && labelFor(catalog.outfits, draft.outfit.key),
-    draft.revealed.quirk && labelFor(catalog.quirks, draft.quirk.key),
+    labelFor(catalog.characters, draft.character),
+    choiceFor(catalog.characters, draft.character)?.supportsGender &&
+      draft.kidGender !== "open" &&
+      `Gender: ${draft.kidGender}`,
+    draft.revealed.outfit && labelFor(catalog.outfits, draft.outfit),
+    draft.revealed.quirk && labelFor(catalog.quirks, draft.quirk),
   ].filter(Boolean);
   return (
     <View accessible style={styles.summary}>
+      <HeroPreview
+        character={choiceFor(catalog.characters, draft.character)}
+        outfit={
+          draft.revealed.outfit
+            ? choiceFor(catalog.outfits, draft.outfit)
+            : undefined
+        }
+        quirk={
+          draft.revealed.quirk
+            ? choiceFor(catalog.quirks, draft.quirk)
+            : undefined
+        }
+      />
       <Text style={styles.summaryName}>{name || "Your hero"}</Text>
       <Text style={styles.summaryText}>{parts.join(" · ")}</Text>
     </View>

@@ -20,6 +20,7 @@ export function ChoiceTile({
   selected,
   onPress,
   art,
+  artSize = 64,
   role = "radio",
   disabled = false,
   style,
@@ -29,6 +30,7 @@ export function ChoiceTile({
   selected: boolean;
   onPress: () => void;
   art?: ReactNode;
+  artSize?: number;
   role?: "radio" | "checkbox";
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -56,7 +58,7 @@ export function ChoiceTile({
         <View
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          style={styles.art}
+          style={[styles.art, { width: artSize, height: artSize }]}
         >
           {art}
         </View>

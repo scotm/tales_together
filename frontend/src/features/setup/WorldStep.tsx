@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { CatalogArt } from "@/components/workshop/CatalogArt";
 import { ChoiceTile } from "@/components/workshop/ChoiceTile";
 import {
   colors,
@@ -9,7 +10,13 @@ import {
   type,
 } from "@/components/workshop/theme";
 import { WorkshopButton } from "@/components/workshop/WorkshopButton";
-import { labelFor, type WorkshopCatalog } from "./catalog";
+import {
+  available,
+  catalogChoice,
+  choiceFor,
+  labelFor,
+  type WorkshopCatalog,
+} from "./catalog";
 import type { WorldPart } from "./draft";
 import { ChoiceGrid, StepHeading, setupStyles, useShelfColumns } from "./parts";
 import { useSetupDraft } from "./SetupProvider";
@@ -49,17 +56,21 @@ export function WorldStep({
         lede="Choose where the story happens and what goes wrong, or let Surprise pick for you."
       />
       <View style={styles.preview}>
+        <CatalogArt
+          option={choiceFor(catalog.settings, draft.setting)}
+          size={180}
+        />
         <Text style={styles.previewText}>
-          {labelFor(catalog.settings, draft.setting.key)}
+          {labelFor(catalog.settings, draft.setting)}
         </Text>
         <Text style={styles.previewProblem}>
-          {labelFor(catalog.problems, draft.problem.key)}
+          {labelFor(catalog.problems, draft.problem)}
         </Text>
       </View>
 
       {PARTS.map(({ part, eyebrow, keepLabel }) => {
         const kept = part === "setting" ? draft.keepSetting : draft.keepProblem;
-        const current = draft[part].key;
+        const current = draft[part];
         const isOpen = open === part;
         return (
           <View key={part} style={styles.card}>
@@ -94,13 +105,18 @@ export function WorldStep({
             </Pressable>
             {isOpen ? (
               <ChoiceGrid columns={columns} label={eyebrow}>
-                {options[part].map((option) => (
+                {available(options[part]).map((option) => (
                   <ChoiceTile
-                    key={option.key}
+                    art={<CatalogArt option={option} />}
+                    key={option.optionId}
                     label={option.label}
-                    selected={option.key === current}
+                    selected={option.optionId === current.optionId}
                     onPress={() => {
-                      dispatch({ type: "selectWorld", part, key: option.key });
+                      dispatch({
+                        type: "selectWorld",
+                        part,
+                        choice: catalogChoice(option),
+                      });
                       setOpen(null);
                     }}
                   />
@@ -121,8 +137,8 @@ export function WorldStep({
               dispatch({
                 type: "surprise",
                 options: {
-                  settings: catalog.settings.map((entry) => entry.key),
-                  problems: catalog.problems.map((entry) => entry.key),
+                  settings: available(catalog.settings).map(catalogChoice),
+                  problems: available(catalog.problems).map(catalogChoice),
                 },
               })
             }

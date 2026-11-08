@@ -3,7 +3,12 @@ import { useConvexConnectionState, useMutation } from "convex/react";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
-import { legacyCreateArgs } from "./catalog";
+import {
+  catalogDefaults,
+  reference,
+  selectedChoices,
+  type WorkshopCatalog,
+} from "./catalog";
 import { hasHeroName } from "./draft";
 import { useSetupDraft } from "./SetupProvider";
 
@@ -12,9 +17,9 @@ import { useSetupDraft } from "./SetupProvider";
  * taps before React re-renders. Success resets the draft after keeping the
  * story id for navigation; every failure leaves the draft intact.
  */
-export function useCreateStory(capacity: number) {
-  const { draft, dispatch, defaults } = useSetupDraft();
-  const createStory = useMutation(api.stories.create);
+export function useCreateStory(catalog: WorkshopCatalog) {
+  const { draft, dispatch } = useSetupDraft();
+  const createStory = useMutation(api.stories.createFromSetup);
   const connection = useConvexConnectionState();
   const diagnostics = useDiagnostics();
   const router = useRouter();
@@ -22,13 +27,22 @@ export function useCreateStory(capacity: number) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const blockedReason = !connection.isWebSocketConnected
-    ? "Connect to the story server before starting a story."
-    : !hasHeroName(draft)
-      ? "Give your hero a name first."
-      : draft.packed.length !== capacity
-        ? `Pack exactly ${capacity} things first.`
-        : null;
+  const capacity = catalog.backpackSize;
+  const invalid = selectedChoices(draft).some(
+    (choice) =>
+      !catalog.options.some(
+        (option) => option.optionId === choice.optionId && !option.withdrawn,
+      ),
+  );
+  const blockedReason = invalid
+    ? "A choice is unavailable or withdrawn. Please replace it before starting."
+    : !connection.isWebSocketConnected
+      ? "Connect to the story server before starting a story."
+      : !hasHeroName(draft)
+        ? "Give your hero a name first."
+        : draft.packed.length !== capacity
+          ? `Pack exactly ${capacity} things first.`
+          : null;
 
   async function start() {
     if (inFlight.current || blockedReason) {
@@ -39,12 +53,27 @@ export function useCreateStory(capacity: number) {
     setCreating(true);
     setError(null);
     try {
-      const args = legacyCreateArgs(draft);
-      const storyId = await diagnostics.track("stories.create", () =>
+      const args = {
+        setting: reference(draft.setting),
+        problem: reference(draft.problem),
+        character: reference(draft.character),
+        outfit: reference(draft.outfit),
+        quirk: reference(draft.quirk),
+        packed: draft.packed.map(reference),
+        kidGender: catalog.characters.find(
+          (row) => row.optionId === draft.character.optionId,
+        )?.supportsGender
+          ? draft.kidGender
+          : "open",
+        protagonistName: draft.heroName.trim(),
+        authorName: draft.authorName.trim() || undefined,
+      };
+      const storyId = await diagnostics.track("stories.createFromSetup", () =>
         createStory(args),
       );
       router.push({ pathname: "/story/[storyId]", params: { storyId } });
-      dispatch({ type: "reset", defaults });
+      const defaults = catalogDefaults(catalog);
+      if (defaults) dispatch({ type: "reset", defaults });
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not start a story",

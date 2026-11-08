@@ -49,6 +49,8 @@
     "web": "expo start --web",
     "web:lan": "node scripts/web-lan.mjs",
     "convex:dev": "convex dev",
+    "workshop:assets": "node scripts/build-workshop-assets.mjs",
+    "catalog:seed": "convex run migrations:seedCatalog",
     "epub:assets": "node scripts/build-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

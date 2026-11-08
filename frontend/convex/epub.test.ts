@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import JSZip from "jszip";
 import { expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -11,6 +11,7 @@ test.each([true, false])(
   "exports a complete archive with cover present: %s",
   async (hasCover) => {
     const t = convexTest(schema, modules);
+    await t.mutation(internal.migrations.seedCatalog, {});
     const storyId = await t.mutation(api.stories.create, {
       title: "The Windy Kite",
       setting: "A seaside town",

@@ -11,14 +11,19 @@ jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 jest.mock("expo-router", () => ({
   Stack: function Stack() {
     const { Text, TextInput, View } = require("react-native");
-    const { useSetupDraft } = require("@/features/setup/SetupProvider");
-    const { draft, dispatch } = useSetupDraft();
+    const { useSetupSession } = require("@/features/setup/SetupProvider");
+    const { defaultsFixture } = require("./fixtures/workshopCatalog");
+    const { useEffect } = require("react");
+    const { draft, dispatch } = useSetupSession();
+    useEffect(() => {
+      dispatch({ type: "initialize", defaults: defaultsFixture });
+    }, [dispatch]);
     return (
       <View>
         <Text>Workshop routes</Text>
         <TextInput
           accessibilityLabel="Draft name"
-          value={draft.heroName}
+          value={draft?.heroName ?? ""}
           onChangeText={(value: string) =>
             dispatch({ type: "setHeroName", value })
           }

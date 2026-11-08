@@ -1,4 +1,3 @@
-import { CONVEYOR_ITEMS } from "@convex/catalog";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -147,7 +146,7 @@ export default function StoryScreen() {
             ) : null}
 
             {chapter.beatCards.map((card) => {
-              const item = CONVEYOR_ITEMS.find(
+              const item = story.story.items.find(
                 (entry) => entry.id === card.suggestedItemId,
               );
               return (
@@ -174,7 +173,7 @@ export default function StoryScreen() {
                   </Text>
                   <Text style={styles.cardPitch}>{card.kidFriendlyPitch}</Text>
                   {item ? (
-                    <Text style={styles.badge}>🎒 {item.label}</Text>
+                    <Text style={styles.badge}>🎒 {item.name}</Text>
                   ) : null}
                 </Pressable>
               );
