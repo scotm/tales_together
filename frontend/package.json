@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
     "convex": "^1.48.0",
     "expo": "~58.0.19",
     "expo-constants": "~58.0.13",
@@ -47,6 +48,7 @@
     "web": "expo start --web",
     "web:lan": "node scripts/web-lan.mjs",
     "convex:dev": "convex dev",
+    "epub:assets": "node scripts/build-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

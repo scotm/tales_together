@@ -10,6 +10,9 @@
 
 import type * as catalog from "../catalog.js";
 import type * as chapters from "../chapters.js";
+import type * as cover_assets from "../cover/assets.js";
+import type * as cover_rasterize from "../cover/rasterize.js";
+import type * as cover_render from "../cover/render.js";
 import type * as diagnostics from "../diagnostics.js";
 import type * as epub_build from "../epub/build.js";
 import type * as epub_templates from "../epub/templates.js";
@@ -46,6 +49,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   catalog: typeof catalog;
   chapters: typeof chapters;
+  "cover/assets": typeof cover_assets;
+  "cover/rasterize": typeof cover_rasterize;
+  "cover/render": typeof cover_render;
   diagnostics: typeof diagnostics;
   "epub/build": typeof epub_build;
   "epub/templates": typeof epub_templates;

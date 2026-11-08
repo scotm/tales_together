@@ -153,6 +153,7 @@ export default defineSchema({
         usedInChapter: v.optional(v.number()),
       }),
     ),
+    authorName: v.optional(v.string()), // typed credit on the cover and title page
     coverFileId: v.optional(v.id("_storage")),
     epubFileId: v.optional(v.id("_storage")),
     traceId: v.optional(v.string()),

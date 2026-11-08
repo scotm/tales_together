@@ -89,6 +89,7 @@ export default function HomeScreen() {
   const [lockedProblem, setLockedProblem] = useState(false);
 
   const [heroName, setHeroName] = useState("Barnaby");
+  const [authorName, setAuthorName] = useState("");
   const [archetype, setArchetype] = useState<CatalogOption>(HERO_ARCHETYPES[0]);
   const [outfit, setOutfit] = useState<CatalogOption>(HERO_OUTFITS[0]);
   const [quirk, setQuirk] = useState<CatalogOption>(QUIRK_STICKERS[0]);
@@ -138,6 +139,7 @@ export default function HomeScreen() {
           protagonistName: heroName,
           protagonistQuirk: quirk.promptFragment,
           visualDescription: `${archetype.promptFragment} ${outfit.promptFragment}`,
+          authorName: authorName.trim() || undefined,
           backpackItems: packed.map((id) => ({
             id,
             name: CONVEYOR_ITEMS.find((item) => item.id === id)?.label ?? id,
@@ -260,6 +262,17 @@ export default function HomeScreen() {
               />
             ))}
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Who wrote it?</Text>
+          <TextInput
+            value={authorName}
+            onChangeText={setAuthorName}
+            placeholder="Written by (optional)"
+            autoCapitalize="words"
+            style={styles.input}
+          />
         </View>
 
         <View style={styles.section}>

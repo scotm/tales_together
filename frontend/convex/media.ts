@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { classifyError } from "../shared/diagnostics/contract";
 import { internal } from "./_generated/api";
 import { internalAction, internalQuery } from "./_generated/server";
 import {
@@ -30,6 +31,9 @@ export function coverRequest(input: {
     "Portrait 2:3 composition, artwork extending to all four edges; no border, frame or paper margins.",
     "Artwork only. Do not draw any title, lettering, typography, labels or signature.",
     `Setting: ${input.setting}.`,
+    "Portrait orientation, 2:3. Keep the top third and bottom sixth calm,",
+    "with only soft background, so a title and author credit can be added.",
+    "Leave all lettering off the art; it is composited later.",
     `Style: ${input.artStyle}.`,
     NO_TEXT,
   ].join(" ");
@@ -232,23 +236,37 @@ export const illustrateCover = internalAction({
           const original = await ctx.storage.store(
             new Blob([image.bytes], { type: image.contentType }),
           );
-          const fileId = await ctx.runAction(internal.mediaNode.recompress, {
-            fileId: original,
-            diagnostics: diag.child({ name: "compression" }),
-          });
-          if (fileId !== original) {
-            try {
-              await ctx.storage.delete(original);
-            } catch {
-              degraded = true;
-              await diag.record("media.cleanup_failed", {
-                level: "warn",
-                status: "degraded",
-                stage: "delete_original",
-                errorCode: "STORAGE_CLEANUP_FAILED",
-                message: "The original cover could not be deleted.",
-              });
+          let fileId = original;
+          try {
+            fileId = await ctx.runAction(
+              internal.cover.rasterize.composeCover,
+              { storyId, artFileId: original },
+            );
+            if (fileId !== original) {
+              try {
+                await ctx.storage.delete(original);
+              } catch {
+                degraded = true;
+                await diag.record("media.cleanup_failed", {
+                  level: "warn",
+                  status: "degraded",
+                  stage: "delete_original",
+                  errorCode: "STORAGE_CLEANUP_FAILED",
+                  message: "The original cover could not be deleted.",
+                });
+              }
             }
+          } catch (cause) {
+            // A cover without lettering beats no cover at all.
+            degraded = true;
+            const classified = classifyError(cause);
+            await diag.record("media.cover_typography_failed", {
+              level: "warn",
+              status: "degraded",
+              stage: "cover_typography",
+              errorCode: classified.code,
+              message: "The cover typography failed; raw art was kept.",
+            });
           }
 
           await ctx.runMutation(internal.stories.setCover, {

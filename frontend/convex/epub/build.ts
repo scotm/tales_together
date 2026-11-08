@@ -10,6 +10,8 @@ import {
   diagnosticContext,
   operationIdFor,
 } from "../lib/diagnostics";
+import { decodeBase64 } from "../llm/image";
+import { FONT_FILES } from "./assets";
 import {
   type ManifestItem,
   renderChapter,
@@ -68,6 +70,15 @@ async function runBuild(
   const manifest: ManifestItem[] = [];
   const spine = ["titlepage"];
 
+  for (const font of FONT_FILES) {
+    add(`OEBPS/fonts/${font.filename}`, decodeBase64(font.base64));
+    manifest.push({
+      id: font.id,
+      href: `fonts/${font.filename}`,
+      mediaType: "font/woff2",
+    });
+  }
+
   if (story.coverFileId) {
     add("OEBPS/images/cover.jpg", await read(story.coverFileId, "cover"));
     add("OEBPS/text/cover.xhtml", renderCover(story.title));
@@ -122,6 +133,7 @@ async function runBuild(
     renderTitlepage({
       title: story.title,
       setting: story.worldState.setting,
+      authorName: story.authorName,
     }),
   );
   add("OEBPS/nav.xhtml", renderNav(ordered, Boolean(story.coverFileId)));
@@ -130,6 +142,7 @@ async function runBuild(
     renderContentOpf({
       storyId: story._id,
       title: story.title,
+      creator: story.authorName,
       createdAt: story.createdAt,
       manifest,
       spine,
