@@ -10,6 +10,8 @@ import {
 import { BACKPACK_SIZE } from "./catalog";
 import {
   catalogReference,
+  customReference,
+  heroReference,
   heroSetupChoices,
   kidGender,
   storySetupChoices,
@@ -20,7 +22,8 @@ import {
   DEFAULT_VIBE,
   READING_LEVEL,
 } from "./lib/config";
-import { resolveChoice, snapshot } from "./lib/resolveSetup";
+import { capabilityHash } from "./lib/heroCapabilities";
+import { resolveChoice, resolveHeroChoice, snapshot } from "./lib/resolveSetup";
 import { getArcRoleInstructions } from "./llm/promptMatrices";
 
 const legacyArgs = {
@@ -100,8 +103,8 @@ async function createBook(ctx: MutationCtx, args: Infer<typeof creationInput>) {
   return storyId;
 }
 
-/** Compatibility endpoint for older clients; inventory still resolves against Convex. */
-export const create = mutation({
+/** Retired public free-form endpoint: only internal fixtures/admin tooling may call it. */
+export const create = internalMutation({
   args: legacyArgs,
   handler: async (ctx, args) => {
     requireValidBackpack(args.backpackItems);
@@ -129,9 +132,11 @@ export const createFromSetup = mutation({
   args: {
     setting: catalogReference,
     problem: catalogReference,
-    character: catalogReference,
-    outfit: catalogReference,
-    quirk: catalogReference,
+    character: heroReference,
+    outfit: heroReference,
+    quirk: heroReference,
+    details: v.optional(customReference),
+    ideaCapability: v.optional(v.string()),
     packed: v.array(catalogReference),
     protagonistName: v.string(),
     authorName: v.optional(v.string()),
@@ -147,9 +152,38 @@ export const createFromSetup = mutation({
       throw new Error(`a backpack holds exactly ${BACKPACK_SIZE} items`);
     const setting = await resolveChoice(ctx, args.setting, "setting");
     const problem = await resolveChoice(ctx, args.problem, "problem");
-    const character = await resolveChoice(ctx, args.character, "character");
-    const outfit = await resolveChoice(ctx, args.outfit, "outfit");
-    const quirk = await resolveChoice(ctx, args.quirk, "quirk");
+    const tokenHash = args.ideaCapability
+      ? await capabilityHash(args.ideaCapability)
+      : null;
+    const session = tokenHash
+      ? await ctx.db
+          .query("heroIdeaSessions")
+          .withIndex("by_token", (q) => q.eq("tokenHash", tokenHash))
+          .unique()
+      : null;
+    if (session && session.expiresAt <= Date.now())
+      throw new Error("Your custom idea session expired. Review it again.");
+    const character = await resolveHeroChoice(
+      ctx,
+      args.character,
+      "character",
+      session?._id,
+    );
+    const outfit = await resolveHeroChoice(
+      ctx,
+      args.outfit,
+      "outfit",
+      session?._id,
+    );
+    const quirk = await resolveHeroChoice(
+      ctx,
+      args.quirk,
+      "quirk",
+      session?._id,
+    );
+    const details = args.details
+      ? await resolveHeroChoice(ctx, args.details, "details", session?._id)
+      : null;
     const packed = await Promise.all(
       args.packed.map((ref) => resolveChoice(ctx, ref, "item")),
     );
@@ -168,8 +202,8 @@ export const createFromSetup = mutation({
       centralProblem: problem.promptFragment,
       protagonistName: name,
       authorName: args.authorName,
-      protagonistQuirk: quirk.promptFragment,
-      visualDescription: `${character.promptFragment} ${outfit.promptFragment}${gender}`,
+      protagonistQuirk: quirk.snapshot.description,
+      visualDescription: `${character.snapshot.description} ${outfit.snapshot.description}${details ? ` ${details.snapshot.description}` : ""}${gender}`,
       backpackItems: packed.map((row) => ({ id: row.key, name: row.label })),
       setupChoices: {
         setting: snapshot(setting),
@@ -177,9 +211,12 @@ export const createFromSetup = mutation({
         packed: packed.map(snapshot),
       },
       heroChoices: {
-        character: snapshot(character),
-        outfit: snapshot(outfit),
-        quirk: snapshot(quirk),
+        character: character.snapshot,
+        outfit: outfit.snapshot,
+        quirk: quirk.snapshot,
+        ...(details && details.snapshot.kind === "custom"
+          ? { details: details.snapshot }
+          : {}),
         kidGender: args.kidGender,
       },
     });

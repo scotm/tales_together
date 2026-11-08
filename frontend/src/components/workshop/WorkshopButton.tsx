@@ -92,7 +92,7 @@ export function WorkshopButton({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: layout.minTarget + 8,
+    minHeight: 58,
     minWidth: layout.minTarget,
     flexDirection: "row",
     alignItems: "center",
@@ -100,11 +100,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
-    borderRadius: radii.control,
-    borderWidth: 2,
+    borderRadius: radii.control + 4,
+    borderWidth: 0,
     borderBottomWidth: 5,
   },
   pressed: { transform: [{ translateY: 3 }], borderBottomWidth: 2 },
   inactive: { opacity: 0.55 },
-  label: { ...type.label, fontSize: 16, textAlign: "center" },
+  label: { ...type.button, textAlign: "center" },
 });

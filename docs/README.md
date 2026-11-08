@@ -75,10 +75,13 @@ collecting a report, finding a trace, health checks, purge, usage and receipts.
 maps the revised FigCraft world, hero and chapter screens to the current Expo/Convex
 app, including a Convex-owned catalogue, saved selection snapshots, spoken or
 typed custom hero ideas, assets, delivery slices and acceptance checks.
-The foundation, Convex catalogue, curated setup snapshots and SVG-based artwork
-are implemented. The plan tracks verification and the remaining custom-input
-and story-screen work. The **[catalogue runbook](./workshop-catalogue-runbook.md)**
+The foundation, Convex catalogue, curated/custom setup snapshots, spoken ideas,
+SVG-based artwork and redesigned story screens are implemented. The plan tracks
+verification and outstanding device/visual acceptance. The **[catalogue runbook](./workshop-catalogue-runbook.md)**
 covers seeding, legacy backfill, publication, withdrawal and artwork builds.
+The **[custom ideas and story-screen runbook](./workshop-ideas-runbook.md)** covers
+recording, transcription, moderation, private capabilities, usage limits,
+retention and the live synthetic smoke check.
 
 ---
 

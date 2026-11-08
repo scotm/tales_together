@@ -11,9 +11,14 @@ export const colors = {
   ink: "#192F3D",
   mutedInk: "#536673",
   mint: "#CDE4D1",
+  /** Pool-of-light mint used inside the paper theatre. */
+  mintSoft: "#E0ECDD",
+  mintDeep: "#AECABD",
   apricot: "#F6AE89",
+  apricotDeep: "#CE7446",
   violet: "#5267BB",
   gold: "#F2D574",
+  lavender: "#DCE2F4",
   border: "#D4D8CE",
   /** Not in the mockups: error text with AA contrast on paper/surface. */
   danger: "#A3261B",
@@ -36,8 +41,9 @@ export const spacing = {
 
 export const radii = {
   control: 12,
-  card: 18,
+  card: 20,
   panel: 24,
+  postcard: 28,
   pill: 999,
 } as const;
 
@@ -64,31 +70,43 @@ export const fontFaces = {
   serifSemiBold: "SourceSerif4-Semibold",
 } as const;
 
-/** Semantic type variants. Line heights are content-driven, not fixed boxes. */
+/** Semantic type variants, following the 130% line height in the design. */
 export const type = {
-  display: { fontFamily: fontFaces.bold, fontSize: 40, lineHeight: 48 },
-  heading: { fontFamily: fontFaces.bold, fontSize: 30, lineHeight: 38 },
+  /** Desktop "What if…" display. Components step this down on phones. */
+  display: { fontFamily: fontFaces.bold, fontSize: 76, lineHeight: 92 },
+  /** Chapter questions and large page titles. */
+  chapter: { fontFamily: fontFaces.bold, fontSize: 56, lineHeight: 64 },
+  heading: { fontFamily: fontFaces.bold, fontSize: 44, lineHeight: 52 },
   title: { fontFamily: fontFaces.semiBold, fontSize: 20, lineHeight: 28 },
-  body: { fontFamily: fontFaces.regular, fontSize: 16, lineHeight: 24 },
-  bodyStrong: { fontFamily: fontFaces.medium, fontSize: 16, lineHeight: 24 },
+  intro: { fontFamily: fontFaces.regular, fontSize: 21, lineHeight: 30 },
+  body: { fontFamily: fontFaces.regular, fontSize: 17, lineHeight: 26 },
+  bodyStrong: { fontFamily: fontFaces.medium, fontSize: 17, lineHeight: 26 },
   label: { fontFamily: fontFaces.semiBold, fontSize: 15, lineHeight: 20 },
+  button: { fontFamily: fontFaces.semiBold, fontSize: 17, lineHeight: 22 },
   small: { fontFamily: fontFaces.regular, fontSize: 14, lineHeight: 20 },
+  /** A world or hero choice, set in Poppins rather than the book serif. */
+  reel: { fontFamily: fontFaces.semiBold, fontSize: 27, lineHeight: 35 },
   eyebrow: {
     fontFamily: fontFaces.semiBold,
     fontSize: 12,
     lineHeight: 16,
-    letterSpacing: 1.2,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   storyTitle: {
     fontFamily: fontFaces.serifSemiBold,
-    fontSize: 30,
-    lineHeight: 38,
+    fontSize: 35,
+    lineHeight: 45,
+  },
+  bookTitle: {
+    fontFamily: fontFaces.serifSemiBold,
+    fontSize: 44,
+    lineHeight: 54,
   },
   cardTitle: {
     fontFamily: fontFaces.serifSemiBold,
-    fontSize: 19,
-    lineHeight: 26,
+    fontSize: 26,
+    lineHeight: 34,
   },
   prose: { fontFamily: fontFaces.serif, fontSize: 19, lineHeight: 31 },
 } as const satisfies Record<string, TextStyle>;

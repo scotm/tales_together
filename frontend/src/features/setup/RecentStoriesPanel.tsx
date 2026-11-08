@@ -73,7 +73,7 @@ export function RecentStoriesPanel({
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: spacing.md },
+  panel: { gap: spacing.lg, maxWidth: 920 },
   header: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -86,10 +86,8 @@ const styles = StyleSheet.create({
   muted: { ...type.small, color: colors.mutedInk },
   row: {
     gap: spacing.xs,
-    padding: spacing.lg,
+    padding: spacing.xl,
     borderRadius: radii.card,
-    borderWidth: 2,
-    borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   rowTitle: { ...type.cardTitle, color: colors.ink },

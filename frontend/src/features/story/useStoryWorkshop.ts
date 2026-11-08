@@ -6,7 +6,7 @@ import {
   useMutation,
   useQuery,
 } from "convex/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
 import { useQueryDiagnostics } from "@/lib/diagnostics/query";
 import { saveBook } from "@/lib/saveBook";
@@ -25,6 +25,8 @@ export function useStoryWorkshop(storyId: string) {
   const lockChapter = useMutation(api.chapters.lockChapter);
   const retryExport = useMutation(api.exportJobs.retry);
 
+  const pending = useRef(new Set<string>());
+  const [selecting, setSelecting] = useState(false);
   const [pitching, setPitching] = useState(false);
   const [writing, setWriting] = useState(false);
   const [locking, setLocking] = useState(false);
@@ -42,7 +44,12 @@ export function useStoryWorkshop(storyId: string) {
     story?.chapters[story.chapters.length - 1];
   // A finished chapter can be reopened from the list without leaving the story.
   const chapter =
-    story?.chapters.find((entry) => entry._id === openId) ?? activeChapter;
+    story?.chapters.find(
+      (entry) =>
+        entry._id === openId &&
+        (entry.status === "LOCKED" || entry._id === activeChapter?._id),
+    ) ?? activeChapter;
+  const viewingActive = chapter?._id === activeChapter?._id;
   const isWriting =
     writing || (chapter?.status === "WRITING" && Boolean(chapter.writingRunId));
   const exportBusy =
@@ -51,7 +58,15 @@ export function useStoryWorkshop(storyId: string) {
     story?.story.exportStatus === "BUILDING";
 
   async function deal() {
-    if (!chapter) return;
+    if (
+      !chapter ||
+      !viewingActive ||
+      chapter.paragraphs.length ||
+      isWriting ||
+      pending.current.size
+    )
+      return;
+    pending.current.add("pitch");
     setPitching(true);
     setError(null);
     try {
@@ -66,12 +81,22 @@ export function useStoryWorkshop(storyId: string) {
         cause instanceof Error ? cause.message : "Could not deal the cards",
       );
     } finally {
+      pending.current.delete("pitch");
       setPitching(false);
     }
   }
 
   async function pick(cardId: string) {
-    if (!chapter) return;
+    if (
+      !chapter ||
+      !viewingActive ||
+      chapter.status !== "DIRECTING" ||
+      isWriting ||
+      pending.current.size
+    )
+      return;
+    pending.current.add("pick");
+    setSelecting(true);
     setError(null);
     try {
       await diagnostics.track("chapters.chooseBeat", () =>
@@ -79,11 +104,21 @@ export function useStoryWorkshop(storyId: string) {
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not pick");
+    } finally {
+      pending.current.delete("pick");
+      setSelecting(false);
     }
   }
 
   async function nextChapter() {
-    if (!chapter) return;
+    if (
+      !chapter ||
+      !viewingActive ||
+      chapter.status !== "REVIEWING" ||
+      pending.current.size
+    )
+      return;
+    pending.current.add("lock");
     setLocking(true);
     setError(null);
     try {
@@ -93,17 +128,28 @@ export function useStoryWorkshop(storyId: string) {
           clientOperationId: operationId,
         }),
       );
+      setOpenId(null);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not turn the page",
       );
     } finally {
+      pending.current.delete("lock");
       setLocking(false);
     }
   }
 
   async function write() {
-    if (!chapter) return;
+    if (
+      !chapter ||
+      !viewingActive ||
+      !chapter.chosenBeat ||
+      chapter.paragraphs.length ||
+      isWriting ||
+      pending.current.size
+    )
+      return;
+    pending.current.add("write");
     setWriting(true);
     setError(null);
     try {
@@ -120,11 +166,14 @@ export function useStoryWorkshop(storyId: string) {
           : "We couldn't finish this chapter. Your choice is saved. Try again.",
       );
     } finally {
+      pending.current.delete("write");
       setWriting(false);
     }
   }
 
   async function prepareDownload() {
+    if (exportBusy || pending.current.has("export")) return;
+    pending.current.add("export");
     setQueuingExport(true);
     setError(null);
     try {
@@ -137,12 +186,14 @@ export function useStoryWorkshop(storyId: string) {
     } catch {
       setError("We couldn't prepare the download. Try again.");
     } finally {
+      pending.current.delete("export");
       setQueuingExport(false);
     }
   }
 
   async function download() {
-    if (!story?.story.epubUrl) return;
+    if (!story?.story.epubUrl || pending.current.has("save")) return;
+    pending.current.add("save");
     setSaving(true);
     setError(null);
     try {
@@ -157,6 +208,7 @@ export function useStoryWorkshop(storyId: string) {
     } catch {
       setError("We couldn't save the book. Your download is ready; try again.");
     } finally {
+      pending.current.delete("save");
       setSaving(false);
     }
   }
@@ -164,6 +216,10 @@ export function useStoryWorkshop(storyId: string) {
   return {
     story,
     chapter,
+    activeChapter,
+    viewingActive,
+    selecting,
+    connection,
     allLocked,
     isWriting,
     exportBusy,
@@ -171,7 +227,14 @@ export function useStoryWorkshop(storyId: string) {
     locking,
     saving,
     error,
-    setOpenId,
+    setOpenId: (id: string) => {
+      const entry = story?.chapters.find((entry) => entry._id === id);
+      if (
+        entry &&
+        (entry.status === "LOCKED" || entry._id === activeChapter?._id)
+      )
+        setOpenId(id);
+    },
     deal,
     pick,
     nextChapter,
@@ -180,3 +243,5 @@ export function useStoryWorkshop(storyId: string) {
     download,
   };
 }
+
+export type StoryWorkshop = ReturnType<typeof useStoryWorkshop>;

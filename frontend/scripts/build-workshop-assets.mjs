@@ -47,6 +47,10 @@ const extra = [
 ];
 const options = [
   ...groups.flat(),
+  ...["beat_bold", "beat_clever", "beat_silly", "beat_neutral"].map((id) => ({
+    id,
+    asset: `assets/beats/${id}.svg`,
+  })),
   ...extra.map((id) => ({ id, asset: `assets/world-items/${id}.svg` })),
 ];
 const svgByKey = new Map();

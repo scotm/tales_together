@@ -15,10 +15,10 @@ npx convex dev --once
 npm run catalog:seed
 ```
 
-Deploy and seed before enabling the updated frontend. The compatibility
-`stories.create` endpoint now also validates inventory against Convex, so seed
-before accepting creation requests from older clients. Existing story reads,
-chapters, stored media and exports require no rewrite.
+Deploy and seed before enabling the updated frontend. The anonymous free-form
+`stories.create` endpoint is now internal; the app submits curated or confirmed
+custom references through `stories.createFromSetup`. Refresh older clients.
+Existing story reads, chapters, stored media and exports require no rewrite.
 
 The seed inserts 62 missing logical keys: 16 characters, 16 outfits, 16 quirks,
 four settings, four problems and six items. Running it again inserts zero rows.
@@ -90,7 +90,7 @@ The SVGs are UI previews; the prose/image generation descriptions remain the
 preserved catalogue prompt fragments.
 
 `npm run workshop:assets` uses the existing local `@resvg/resvg-wasm` to build
-600px transparent PNGs in `frontend/assets/workshop/`, a static Metro `require`
+66 portable 600px PNGs (62 catalogue choices and four neutral beat illustrations) in `frontend/assets/workshop/`, a static Metro `require`
 manifest in `frontend/src/lib/workshopAssets.ts`, the hero seed fixture and six
 review sheets. This adds no rasteriser, SVG runtime or generation request to the
 app. Commit the generated PNGs, manifest and fixture with source changes.
@@ -127,5 +127,5 @@ revisions, immutable book descriptions, new database-only items, storage
 previews, exact-match backfill, explicit gender, expanded shelves, Shuffle,
 empty/error recovery, offline caching and image failures. Device keyboard,
 VoiceOver/TalkBack, browser focus and responsive visual acceptance still need
-manual checks. Custom/spoken ideas and themed chapter/reading/delivery screens
-remain later work.
+manual checks. Custom/spoken ideas and themed chapter/reading/delivery screens are now
+implemented; see the [ideas and story-screen runbook](./workshop-ideas-runbook.md).

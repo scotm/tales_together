@@ -12,10 +12,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, layout, radii, spacing, type } from "./theme";
 
+const SHOW_WORKSHOP_PILL = 900;
+
 /**
- * Brand header, safe areas, content width and the Help control shared by
- * every workshop screen. `headerActions` sits beside Help (e.g. Recent
- * stories). Content scrolls as a whole so large text never clips.
+ * Brand header, safe areas, content width and the footer shared by every
+ * workshop screen: book mark and lowercase wordmark, a centred workshop pill,
+ * the page action, then a chalky divider and Help as a quiet footer link.
  */
 export function WorkshopShell({
   children,
@@ -28,8 +30,8 @@ export function WorkshopShell({
 }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const gutter =
-    width < layout.phoneMaxWidth ? spacing.phoneGutter : spacing.desktopGutter;
+  const phone = width < layout.phoneMaxWidth;
+  const gutter = phone ? spacing.phoneGutter : spacing.desktopGutter;
   return (
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView behavior="padding" style={styles.screen}>
@@ -39,22 +41,38 @@ export function WorkshopShell({
         >
           <View style={[styles.frame, { maxWidth }]}>
             <View style={styles.header}>
-              <Text accessibilityRole="header" style={styles.brand}>
-                Tales Together
-              </Text>
-              <View style={styles.actions}>
-                {headerActions}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Help & diagnostics"
-                  onPress={() => router.push("/diagnostics")}
-                  style={styles.headerButton}
+              <View style={styles.brand}>
+                <BookMark size={phone ? 36 : 42} />
+                <Text
+                  accessibilityRole="header"
+                  style={[styles.wordmark, phone && styles.wordmarkPhone]}
                 >
-                  <Text style={styles.headerButtonLabel}>Help</Text>
-                </Pressable>
+                  tales together
+                </Text>
               </View>
+              {width >= SHOW_WORKSHOP_PILL ? (
+                <View style={styles.pill}>
+                  <Text style={styles.pillLabel}>YOUR STORY WORKSHOP</Text>
+                </View>
+              ) : null}
+              <View style={styles.actions}>{headerActions}</View>
             </View>
-            {children}
+            <View style={styles.rule} />
+            <View style={styles.content}>{children}</View>
+            <View style={styles.rule} />
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>
+                Made for curious minds, big and small.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Help & diagnostics"
+                onPress={() => router.push("/diagnostics")}
+                style={styles.footerLink}
+              >
+                <Text style={styles.footerLinkLabel}>Need a hand?</Text>
+              </Pressable>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -72,40 +90,135 @@ export function HeaderButton({
   onPress: () => void;
   accessibilityLabel?: string;
 }) {
+  const { width } = useWindowDimensions();
+  const phone = width < layout.phoneMaxWidth;
+  const text = phone
+    ? label === "Recent stories"
+      ? "Recent"
+      : label === "Back to the workshop"
+        ? "← Workshop"
+        : label
+    : label;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={accessibilityLabel ?? label}
       onPress={onPress}
-      style={styles.headerButton}
+      style={({ pressed }) => [
+        styles.headerButton,
+        phone && styles.headerButtonPhone,
+        pressed && styles.pressed,
+      ]}
     >
-      <Text style={styles.headerButtonLabel}>{label}</Text>
+      <Text style={styles.headerButtonLabel}>{text}</Text>
     </Pressable>
+  );
+}
+
+/** The two-page book mark from the design, drawn from rounded blocks. */
+export function BookMark({ size = 42 }: { size?: number }) {
+  const pageWidth = size * 0.24;
+  const pageHeight = size * 0.45;
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[
+        styles.mark,
+        { width: size, height: size, borderRadius: size * 0.28 },
+      ]}
+    >
+      <View
+        style={[
+          styles.page,
+          {
+            width: pageWidth,
+            height: pageHeight,
+            left: size * 0.24,
+            top: size * 0.26,
+            backgroundColor: colors.paper,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.page,
+          {
+            width: pageWidth,
+            height: pageHeight,
+            left: size * 0.52,
+            top: size * 0.26,
+            backgroundColor: colors.apricot,
+          },
+        ]}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.paper },
   scroll: { flexGrow: 1, paddingVertical: spacing.xl },
-  frame: { width: "100%", alignSelf: "center", gap: spacing.xl },
+  frame: { width: "100%", alignSelf: "center", flexGrow: 1 },
   header: {
+    minHeight: 46,
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  brand: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  mark: {
+    justifyContent: "center",
+    alignItems: "flex-start",
+    backgroundColor: colors.ink,
+  },
+  page: {
+    position: "absolute",
+    borderRadius: 2,
+  },
+  wordmark: { ...type.title, fontSize: 25, lineHeight: 32, color: colors.ink },
+  wordmarkPhone: { fontSize: 20, lineHeight: 26 },
+  pill: {
+    minHeight: 40,
+    paddingHorizontal: spacing.xl,
+    justifyContent: "center",
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+  },
+  pillLabel: { ...type.label, fontSize: 13, color: colors.mutedInk },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  headerButton: {
+    minHeight: layout.minTarget,
+    minWidth: layout.minTarget,
+    paddingHorizontal: spacing.xl,
+    justifyContent: "center",
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+  },
+  pressed: { opacity: 0.8 },
+  headerButtonPhone: { paddingHorizontal: spacing.md },
+  headerButtonLabel: { ...type.label, fontSize: 13, color: colors.ink },
+  rule: {
+    height: 1,
+    marginTop: spacing.lg,
+    backgroundColor: colors.border,
+  },
+  content: { gap: spacing.xl, paddingTop: spacing.xl, flexGrow: 1 },
+  footer: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
+    paddingTop: spacing.md,
   },
-  brand: { ...type.title, color: colors.ink },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  headerButton: {
+  footerText: { ...type.small, fontSize: 13, color: colors.mutedInk },
+  footerLink: {
     minHeight: layout.minTarget,
-    minWidth: layout.minTarget,
-    paddingHorizontal: spacing.lg,
     justifyContent: "center",
-    borderRadius: radii.pill,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
   },
-  headerButtonLabel: { ...type.label, color: colors.ink },
+  footerLinkLabel: { ...type.small, fontSize: 13, color: colors.mutedInk },
 });

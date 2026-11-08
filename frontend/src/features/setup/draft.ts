@@ -3,10 +3,13 @@
  * story exists. Pure reducer so step navigation and Surprise are testable
  * without rendering. See storybook-workshop-implementation.md §4.
  *
- * Choices pin a logical key and exact Convex revision. Custom-idea references
- * will extend `HeroChoice` in W4.
+ * Curated choices pin a logical key and exact Convex revision. Custom parts
+ * reference private confirmed ideas; unfinished edits and earlier custom choices
+ * stay in this session draft when browsing presets.
  */
+
 import type { Id } from "@convex/_generated/dataModel";
+import { contextKey } from "../../../shared/heroIdeas";
 
 export type SetupStep = "world" | "hero" | "backpack";
 export type HeroStep = "character" | "outfit" | "quirk" | "name";
@@ -20,7 +23,20 @@ export type CatalogChoice = {
   revision: number;
 };
 export type KidGender = "open" | "girl" | "boy" | "non-binary";
-export type HeroChoice = CatalogChoice;
+export type CustomChoice = {
+  kind: "custom";
+  ideaId: Id<"heroIdeas">;
+  part: "character" | "outfit" | "quirk" | "details";
+  key: string;
+  label: string;
+  description: string;
+  confirmedText: string;
+  expiresAt: number;
+  source: "typed" | "spoken";
+  optionId?: undefined;
+  revision?: undefined;
+};
+export type HeroChoice = CatalogChoice | CustomChoice;
 
 export interface SetupDraft {
   step: SetupStep;
@@ -32,6 +48,16 @@ export interface SetupDraft {
   character: HeroChoice;
   outfit: HeroChoice;
   quirk: HeroChoice;
+  details?: CustomChoice;
+  ideaCapability?: string;
+  ideaSessionExpiresAt?: number;
+  ideaText: string;
+  ideaEditorPart?: CustomChoice["part"];
+  ideaDrafts: Partial<
+    Record<CustomChoice["part"], { text: string; source: "typed" | "spoken" }>
+  >;
+  customHistory: Partial<Record<CustomChoice["part"], CustomChoice>>;
+  ideaSource: "typed" | "spoken";
   revealed: { outfit: boolean; quirk: boolean };
   kidGender: KidGender;
   heroName: string;
@@ -54,6 +80,11 @@ export interface WorldOptions {
 }
 
 export type SetupAction =
+  | { type: "setIdeaSession"; capability: string; expiresAt: number }
+  | { type: "openIdeaEditor"; part: CustomChoice["part"] }
+  | { type: "setIdeaText"; text: string; source: "typed" | "spoken" }
+  | { type: "applyIdea"; expectedContext: string; choices: CustomChoice[] }
+  | { type: "removeDetail" }
   | { type: "initialize"; defaults: DraftDefaults }
   | { type: "setKidGender"; value: KidGender }
   | { type: "goToStep"; step: SetupStep }
@@ -80,6 +111,10 @@ export function createDraft(defaults: DraftDefaults): SetupDraft {
     quirk: defaults.quirk,
     revealed: { outfit: false, quirk: false },
     kidGender: "open",
+    ideaText: "",
+    ideaDrafts: {},
+    customHistory: {},
+    ideaSource: "typed",
     heroName: "",
     authorName: "",
     packed: [...defaults.packed],
@@ -103,6 +138,59 @@ export function setupReducer(
   action: SetupAction,
 ): SetupDraft {
   switch (action.type) {
+    case "setIdeaSession":
+      return {
+        ...draft,
+        ideaCapability: action.capability,
+        ideaSessionExpiresAt: action.expiresAt,
+      };
+    case "openIdeaEditor": {
+      const previous = draft.ideaDrafts[action.part];
+      const confirmed = draft.customHistory[action.part];
+      return {
+        ...draft,
+        ideaEditorPart: action.part,
+        ideaText: previous?.text ?? confirmed?.confirmedText ?? "",
+        ideaSource: previous?.source ?? confirmed?.source ?? "typed",
+      };
+    }
+    case "setIdeaText":
+      return {
+        ...draft,
+        ideaText: action.text,
+        ideaSource: action.source,
+        ideaDrafts: {
+          ...draft.ideaDrafts,
+          [draft.ideaEditorPart ?? "details"]: {
+            text: action.text,
+            source: action.source,
+          },
+        },
+      };
+    case "removeDetail":
+      return { ...draft, details: undefined };
+    case "applyIdea": {
+      if (contextKey(draftContext(draft)) !== action.expectedContext)
+        return draft;
+      const patch: Partial<SetupDraft> = {};
+      const customHistory = { ...draft.customHistory };
+      const ideaDrafts = { ...draft.ideaDrafts };
+      for (const choice of action.choices) {
+        patch[choice.part] = choice;
+        customHistory[choice.part] = choice;
+        ideaDrafts[choice.part] = {
+          text: choice.confirmedText,
+          source: choice.source,
+        };
+      }
+      return {
+        ...draft,
+        ...patch,
+        customHistory,
+        ideaDrafts,
+        revealed: { outfit: true, quirk: true },
+      };
+    }
     case "initialize":
       return draft;
     case "setKidGender":
@@ -159,14 +247,7 @@ export function setupReducer(
       };
     }
     case "selectHero":
-      return {
-        ...draft,
-        [action.part]: action.choice,
-        ...(action.part === "character" &&
-        action.choice.key !== draft.character.key
-          ? { kidGender: "open" as const }
-          : {}),
-      };
+      return { ...draft, [action.part]: action.choice };
     case "setHeroName":
       return { ...draft, heroName: action.value };
     case "setAuthorName":
@@ -198,4 +279,28 @@ export function setupReducer(
     case "reset":
       return createDraft(action.defaults);
   }
+}
+
+export function heroReference(choice: HeroChoice) {
+  return choice.kind === "custom"
+    ? { kind: "custom" as const, ideaId: choice.ideaId, part: choice.part }
+    : { optionId: choice.optionId, revision: choice.revision };
+}
+export function draftContext(draft: SetupDraft) {
+  return {
+    character: heroReference(draft.character),
+    outfit: heroReference(draft.outfit),
+    quirk: heroReference(draft.quirk),
+    ...(draft.details
+      ? {
+          details: {
+            kind: "custom" as const,
+            ideaId: draft.details.ideaId,
+            part: draft.details.part,
+          },
+        }
+      : {}),
+    kidGender:
+      draft.character.kind === "custom" ? ("open" as const) : draft.kidGender,
+  };
 }

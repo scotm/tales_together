@@ -12,4 +12,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "expire private hero ideas",
+  { hours: 1 },
+  internal.heroIdeaState.cleanup,
+  {},
+);
+
 export default crons;

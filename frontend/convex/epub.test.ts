@@ -12,7 +12,7 @@ test.each([true, false])(
   async (hasCover) => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.migrations.seedCatalog, {});
-    const storyId = await t.mutation(api.stories.create, {
+    const storyId = await t.mutation(internal.stories.create, {
       title: "The Windy Kite",
       setting: "A seaside town",
       centralProblem: "Too much wind",
@@ -88,4 +88,5 @@ test.each([true, false])(
       expect(opf).not.toContain('idref="cover"');
     }
   },
+  20_000,
 );

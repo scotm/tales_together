@@ -21,6 +21,25 @@ function request(fetchImpl: unknown, onRetry = vi.fn()) {
   });
 }
 
+it("honours a smaller attempt/timeout budget for idea and speech requests", async () => {
+  const fetchImpl = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () => new Response("busy", { status: 503 }));
+  const result = expect(
+    requestProviderJson({
+      provider: "short",
+      url: "https://example.test/generate",
+      init: {},
+      fetchImpl,
+      maxAttempts: 2,
+      timeoutMs: 30_000,
+    }),
+  ).rejects.toThrow(/503/);
+  await vi.runAllTimersAsync();
+  await result;
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+});
+
 describe("provider backoff", () => {
   it("backs off exponentially before recovering, replaying the same request", async () => {
     const times: number[] = [];

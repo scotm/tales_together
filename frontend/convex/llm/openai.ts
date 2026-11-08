@@ -40,6 +40,8 @@ export function createOpenaiProvider(options: {
         url: `${options.baseUrl.replace(/\/$/, "")}/chat/completions`,
         fetchImpl: options.fetchImpl,
         progress,
+        timeoutMs: request.timeoutMs,
+        maxAttempts: request.maxAttempts,
         init: {
           method: "POST",
           headers,

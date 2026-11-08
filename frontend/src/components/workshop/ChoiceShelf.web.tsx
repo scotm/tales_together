@@ -67,10 +67,10 @@ export function ChoiceShelf({
         style={{
           display: "grid",
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gap: 8,
+          gap: 16,
           maxHeight: limit,
           overflowY: limit ? "auto" : "visible",
-          padding: 4,
+          padding: 2,
           position: "relative",
         }}
       >
@@ -130,11 +130,11 @@ export function ChoiceShelf({
                 justifyContent: "center",
                 position: "relative",
                 cursor: "pointer",
-                minHeight: 150,
+                minHeight: 180,
                 minWidth: 0,
                 padding: 12,
-                borderRadius: 18,
-                border: `2px solid ${selected ? colors.ink : colors.border}`,
+                borderRadius: 20,
+                border: `2px solid ${selected ? colors.ink : "transparent"}`,
                 background: colors.surface,
                 color: colors.ink,
                 fontFamily: fontFaces.medium,
@@ -146,12 +146,36 @@ export function ChoiceShelf({
                 outlineOffset: 1,
               }}
             >
-              <CatalogArt option={option} size={96} />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
+                  minHeight: 110,
+                  borderRadius: 20,
+                }}
+              >
+                <CatalogArt option={option} size={96} />
+              </div>
               <span>{option.displayLabel}</span>
               {selected ? (
                 <span
                   aria-hidden="true"
-                  style={{ position: "absolute", top: 8, right: 8 }}
+                  style={{
+                    position: "absolute",
+                    top: 10,
+                    right: 10,
+                    width: 26,
+                    height: 26,
+                    borderRadius: 999,
+                    background: colors.ink,
+                    color: colors.surface,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                  }}
                 >
                   ✓
                 </span>

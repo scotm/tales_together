@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import {
   catalogContent,
   heroSetupChoices,
+  ideaPart,
   storySetupChoices,
 } from "./lib/catalogValidators";
 
@@ -138,6 +139,47 @@ export const directorModifiers = v.object({
 });
 
 export default defineSchema({
+  heroIdeaSessions: defineTable({
+    tokenHash: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    requests: v.optional(v.number()),
+    windowStartedAt: v.number(),
+    units: v.number(),
+  })
+    .index("by_token", ["tokenHash"])
+    .index("by_expires", ["expiresAt"]),
+  heroIdeas: defineTable({
+    sessionId: v.id("heroIdeaSessions"),
+    requestId: v.string(),
+    kind: v.union(v.literal("idea"), v.literal("speech")),
+    source: v.union(v.literal("typed"), v.literal("spoken")),
+    state: v.union(
+      v.literal("PENDING"),
+      v.literal("READY"),
+      v.literal("CONFIRMED"),
+      v.literal("REJECTED"),
+      v.literal("FAILED"),
+      v.literal("CANCELLED"),
+    ),
+    fingerprint: v.string(),
+    interpretationVersion: v.optional(v.literal("v1")),
+    baseFingerprint: v.string(),
+    parts: v.optional(v.array(ideaPart)),
+    confirmedText: v.optional(v.string()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_request", ["sessionId", "requestId"])
+    .index("by_expires", ["expiresAt"]),
+  heroIdeaQuota: defineTable({
+    key: v.string(),
+    units: v.number(),
+    sessions: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_expires", ["expiresAt"]),
   catalogOptions: defineTable({
     ...catalogContent,
     revision: v.number(),

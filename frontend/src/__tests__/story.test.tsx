@@ -1,11 +1,18 @@
 /// <reference types="jest" />
 import type { Id } from "@convex/_generated/dataModel";
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams } from "expo-router";
 import { saveBook } from "@/lib/saveBook";
 import StoryScreen from "../app/story/[storyId]";
 
+jest.mock("@/lib/BackendProvider", () => ({
+  useReconnectBackend: () => jest.fn(),
+}));
+jest.mock(
+  "react-native-safe-area-context",
+  () => require("react-native-safe-area-context/jest/mock").default,
+);
 jest.mock("@/lib/saveBook", () => ({
   bookDeliveryLabel: "📖 Download the Book",
   saveBook: jest.fn(),
@@ -97,12 +104,12 @@ it("reads back the prose, then offers to write once a card is picked", async () 
   const view = await render(<StoryScreen />);
 
   expect(view.getByText("Mira held the string tight.")).toBeTruthy();
-  expect(view.queryByText("🪄 Write Chapter!")).toBeNull();
-  expect(view.getByText("Next Chapter →")).toBeTruthy();
+  expect(view.queryByText("Write this chapter")).toBeNull();
+  expect(view.getByText("Next chapter →")).toBeTruthy();
 
   (useQuery as jest.Mock).mockReturnValue(unpublished());
   await view.rerender(<StoryScreen />);
-  expect(view.getByText("🪄 Write Chapter!")).toBeTruthy();
+  expect(view.getByText("Write this chapter")).toBeTruthy();
 
   (useQuery as jest.Mock).mockReturnValue({
     ...story,
@@ -116,7 +123,9 @@ it("reads back the prose, then offers to write once a card is picked", async () 
     ],
   });
   await view.rerender(<StoryScreen />);
-  expect(view.queryByText("🪄 Write Chapter!")).toBeNull();
+  expect(
+    view.getByRole("button", { name: "Write this chapter" }),
+  ).toBeDisabled();
 });
 
 it("reopens a finished chapter from the list", async () => {
@@ -147,7 +156,9 @@ it("reopens a finished chapter from the list", async () => {
   expect(view.getByText("Chapter two words.")).toBeTruthy();
   expect(view.queryByText("Chapter one words.")).toBeNull();
 
-  await fireEvent.press(view.getByText("1 · The Kite Chase"));
+  await fireEvent.press(
+    view.getByRole("button", { name: "Chapter 1: The Kite Chase. Read again" }),
+  );
   expect(view.getByText("Chapter one words.")).toBeTruthy();
 });
 
@@ -182,7 +193,7 @@ it("restores the chapter retry control and error after a reload", async () => {
   });
   const view = await render(<StoryScreen />);
   expect(view.getByText("Your choice is saved. Try again.")).toBeTruthy();
-  await fireEvent.press(view.getByText("Try Chapter Again"));
+  await fireEvent.press(view.getByText("Try chapter again"));
   expect(write).toHaveBeenCalledWith(
     expect.objectContaining({ chapterId: "chapter_1" }),
   );
@@ -204,7 +215,7 @@ it("shows retry progress and prevents a second write after a reload", async () =
   const view = await render(<StoryScreen />);
   expect(view.getByText(/Trying again \(3\/4\)/)).toBeTruthy();
   expect(
-    view.getByRole("button", { name: "Writing..." }).props.accessibilityState
+    view.getByRole("button", { name: "Writing…" }).props.accessibilityState
       .disabled,
   ).toBe(true);
 });
@@ -220,7 +231,7 @@ it("shows export progress then offers retry when the saved export fails", async 
   });
   const view = await render(<StoryScreen />);
   expect(view.getByText("Painting your cover…")).toBeTruthy();
-  expect(view.queryByText("Try Download Again")).toBeNull();
+  expect(view.queryByText("Try download again")).toBeNull();
   (useQuery as jest.Mock).mockReturnValue({
     ...completed,
     story: {
@@ -231,7 +242,7 @@ it("shows export progress then offers retry when the saved export fails", async 
   });
   await view.rerender(<StoryScreen />);
   expect(view.getByText("Your chapters are saved. Try again.")).toBeTruthy();
-  await fireEvent.press(view.getByText("Try Download Again"));
+  await fireEvent.press(view.getByText("Try download again"));
   expect(retry).toHaveBeenCalledWith(
     expect.objectContaining({ storyId: "story_1" }),
   );
@@ -258,4 +269,90 @@ it("keeps a ready download available when saving the file fails", async () => {
     expect.any(Function),
   );
   expect(view.queryByText(/We couldn't save the book/)).toBeNull();
+});
+
+it("prevents future chapter navigation and returns from a reread without mutating chapters", async () => {
+  const mutation = jest.fn();
+  (useMutation as jest.Mock).mockReturnValue(mutation);
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue({
+    ...story,
+    chapters: [
+      {
+        ...chapter,
+        _id: "past",
+        status: "LOCKED",
+        title: "First adventure",
+        paragraphs: ["Saved first chapter."],
+      },
+      {
+        ...chapter,
+        _id: "active",
+        index: 2,
+        status: "DIRECTING",
+        paragraphs: [],
+      },
+      {
+        ...chapter,
+        _id: "future",
+        index: 3,
+        status: "PITCHING",
+        beatCards: [],
+        paragraphs: [],
+      },
+    ],
+  });
+  const view = await render(<StoryScreen />);
+  expect(
+    view.getByRole("button", { name: "Chapter 3. Not ready yet" }),
+  ).toBeDisabled();
+  await fireEvent.press(
+    view.getByRole("button", {
+      name: "Chapter 1: First adventure. Read again",
+    }),
+  );
+  expect(view.getByText("Saved first chapter.")).toBeTruthy();
+  expect(view.queryByText("Write this chapter")).toBeNull();
+  await fireEvent.press(view.getByText("Return to the current chapter"));
+  expect(view.getByText("Write this chapter")).toBeTruthy();
+  expect(mutation).not.toHaveBeenCalled();
+});
+
+it("waits for card selection to finish before writing and keeps choice separate from generation", async () => {
+  let finish!: () => void;
+  const choose = jest.fn().mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const write = jest.fn();
+  (useMutation as jest.Mock).mockReturnValue(choose);
+  (useAction as jest.Mock).mockReturnValue(write);
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue(unpublished());
+  const view = await render(<StoryScreen />);
+  await fireEvent.press(
+    view.getByRole("radio", { name: "Wind Race!. Run past the boats!" }),
+  );
+  expect(choose).toHaveBeenCalledTimes(1);
+  expect(
+    view.getByRole("button", { name: "Write this chapter" }),
+  ).toBeDisabled();
+  expect(write).not.toHaveBeenCalled();
+  await act(() => finish());
+  await fireEvent.press(view.getByText("Write this chapter"));
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+it("distinguishes unresolved and missing stories while preserving a way back to the workshop", async () => {
+  (useLocalSearchParams as jest.Mock).mockReturnValue({ storyId: "story_1" });
+  (useQuery as jest.Mock).mockReturnValue(undefined);
+  const view = await render(<StoryScreen />);
+  expect(view.getByLabelText("Loading story")).toBeTruthy();
+  expect(view.getByText("Back to the workshop")).toBeTruthy();
+  (useQuery as jest.Mock).mockReturnValue(null);
+  await view.rerender(<StoryScreen />);
+  expect(view.getByText("Story not found")).toBeTruthy();
+  expect(view.queryByLabelText("Loading story")).toBeNull();
 });

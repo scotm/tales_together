@@ -20,7 +20,7 @@ export function ChoiceTile({
   selected,
   onPress,
   art,
-  artSize = 64,
+  artSize = 96,
   role = "radio",
   disabled = false,
   style,
@@ -55,12 +55,14 @@ export function ChoiceTile({
       ]}
     >
       {art ? (
-        <View
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={[styles.art, { width: artSize, height: artSize }]}
-        >
-          {art}
+        <View style={styles.artWell}>
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.art, { width: artSize, height: artSize }]}
+          >
+            {art}
+          </View>
         </View>
       ) : null}
       <View style={styles.text}>
@@ -81,34 +83,36 @@ export function ChoiceTile({
 const styles = StyleSheet.create({
   tile: {
     minHeight: layout.minTarget + 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    paddingRight: spacing.xxl + spacing.sm,
-    borderRadius: radii.card,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  selected: { borderColor: colors.ink, backgroundColor: colors.surface },
-  pressed: { opacity: 0.85 },
-  disabled: { opacity: 0.5 },
-  art: {
-    width: 56,
-    height: 56,
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.card,
+    borderWidth: 2,
+    borderColor: "transparent",
+    backgroundColor: colors.surface,
   },
-  text: { flex: 1, gap: 2 },
-  label: { ...type.bodyStrong, color: colors.ink },
-  description: { ...type.small, color: colors.mutedInk },
+  selected: { borderColor: colors.ink },
+  pressed: { opacity: 0.85 },
+  disabled: { opacity: 0.5 },
+  artWell: {
+    width: "100%",
+    maxWidth: 168,
+    minHeight: 104,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.card,
+  },
+  art: { alignItems: "center", justifyContent: "center" },
+  text: { gap: 2, alignItems: "center" },
+  label: { ...type.label, color: colors.ink, textAlign: "center" },
+  description: { ...type.small, color: colors.mutedInk, textAlign: "center" },
   check: {
     position: "absolute",
     top: spacing.sm,
     right: spacing.sm,
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     borderRadius: radii.pill,
     backgroundColor: colors.ink,
     alignItems: "center",

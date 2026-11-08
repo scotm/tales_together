@@ -189,6 +189,7 @@ async function runPitch(
       pitch.cards
         .map((card) => `${card.title}: ${card.kidFriendlyPitch}`)
         .join("\n"),
+      diag.providerProgress({ provider: "text", purpose: "pitch_moderation" }),
     );
     if (!verdict.ok) {
       throw new Error(`moderation rejected the pitch: ${verdict.reason}`);
@@ -535,7 +536,13 @@ export const writeChapter = action({
       }
 
       stage = "moderation";
-      const verdict = await moderate(paragraphs.join("\n\n"));
+      const verdict = await moderate(
+        paragraphs.join("\n\n"),
+        diag.providerProgress({
+          provider: "text",
+          purpose: "prose_moderation",
+        }),
+      );
       if (!verdict.ok) {
         throw new Error(`moderation rejected the chapter: ${verdict.reason}`);
       }

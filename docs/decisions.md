@@ -17,6 +17,65 @@ Revisit when:
 
 ---
 
+## Reviewed custom/spoken ideas and workshop story screens — accepted, 2026-11-08
+
+**Decision:** custom input joins one reviewed flow: type or foreground-record,
+edit the words, moderate/interpret, review proposed parts, confirm, then snapshot
+them server-side. Private session capabilities are random 256-bit values stored
+only as hashes. Requests bind reviewed text and current hero references, dedupe,
+expire after 24 hours and cannot publish after cancellation. Global/session
+request-unit reservations bound paid work. The former anonymous free-form create
+endpoint is now internal. Existing saved books need no rewrite.
+
+**Speech:** use the existing Gemini key with inline audio on `generateContent`,
+defaulting to the configured fast model with optional `SPEECH_GEMINI_MODEL`.
+Interpretation/moderation keep the existing text adapter. Native capture adds
+Expo-compatible `expo-audio` with background recording disabled; web uses
+MediaRecorder. The server receives at most 2 MiB/20 seconds (250 ms encoder
+padding), validates actual signatures/metadata and counts Opus packets when
+Chrome omits WebM duration. Node-only `music-metadata` adds no FFmpeg service.
+Recordings are not stored/uploaded; native cache files and mic resources are
+released on stop/cancel, background, unmount and route blur. Editable transcripts
+remain in client memory; reviewed text is persisted only at confirmation.
+
+**Moderation:** the pass-through is replaced with enforced structured model
+classification of custom input/output and chapter pitch/prose. Unknown/malformed
+or unsafe verdicts fail closed. Interpretation is a strict minimal patch with
+no invented name/gender/preferences and a clarification path. The UI keeps
+unsupported custom details in words and never substitutes unrelated art.
+
+**Story UI:** shared workshop tokens now cover real beat cards, a separate write
+action, five chapter markers, recap, inventory, a serif reader and completion.
+Pending selection blocks writing; current/completed markers allow rereading
+without locking anything. Saved writing attempts, export progress/retries and
+ready-file delivery recovery are retained. Neutral beat SVGs need no provider
+calls. The publisher's static media/fonts/providers are unchanged.
+
+**Verified:** mocked regressions cover privacy, strict validation, quotas,
+cancellation/expiry, actual AAC/MP4 and durationless WebM, capture cleanup and
+story recovery. Web/iOS/Android exports compile. A live synthetic recording
+passed transcription, both moderation checks and interpretation in ~3.7 seconds,
+preserving blue cape/rainbow glasses/star hiccups as an outfit/details/quirk
+patch, with the otter unchanged. No story/artwork was generated. Device, browser
+focus/visual, screen-reader, recognition-quality and family safety evaluation
+remain acceptance work; no such evaluation is claimed.
+
+**Gotchas:** Gemini's existing `responseSchema` adapter rejects
+`additionalProperties`; use the supported subset and enforce strictness locally.
+The live check caught this on the first moderation request. Expo keeps route
+components mounted, so unmount cleanup alone does not stop a microphone when
+opening Diagnostics. Plain HTTP LAN browsers cannot capture audio; native or
+trusted HTTPS plus secure backend connectivity is required. Two-attempt
+20/30-second limits keep setup requests within the five-minute watchdog.
+
+See the [ideas runbook](./workshop-ideas-runbook.md),
+[Expo recording API](https://docs.expo.dev/versions/latest/sdk/audio/),
+[Google audio input contract](https://firebase.google.com/docs/ai-logic/analyze-audio)
+and [music-metadata](https://github.com/Borewit/music-metadata).
+
+**Revisit when:** physical-device checks or recognition/moderation evaluation
+change the chosen audio formats, classifier, request limits or preview contract.
+
 ## Revisioned workshop catalogue and SVG previews — accepted, 2026-11-08
 
 **Decision:** Convex `catalogOptions` owns the curated choices. Preserve logical

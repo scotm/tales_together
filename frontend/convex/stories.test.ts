@@ -25,7 +25,7 @@ const sample = {
 test("create seeds five chapters with arc roles in order", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(internal.migrations.seedCatalog, {});
-  const storyId = await t.mutation(api.stories.create, sample);
+  const storyId = await t.mutation(internal.stories.create, sample);
 
   const chapters = await t.run(async (ctx) =>
     ctx.db
@@ -48,7 +48,7 @@ test("create seeds five chapters with arc roles in order", async () => {
 test("get returns story, chapters and characters", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(internal.migrations.seedCatalog, {});
-  const storyId = await t.mutation(api.stories.create, sample);
+  const storyId = await t.mutation(internal.stories.create, sample);
 
   const result = await t.query(api.stories.get, { storyId });
 
@@ -65,7 +65,7 @@ test("get returns story, chapters and characters", async () => {
 test("create keeps a trimmed typed author name", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(internal.migrations.seedCatalog, {});
-  const storyId = await t.mutation(api.stories.create, {
+  const storyId = await t.mutation(internal.stories.create, {
     ...sample,
     authorName: "  Mira  ",
   });
@@ -79,7 +79,7 @@ test("create rejects a backpack that is not exactly three items", async () => {
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
-    t.mutation(api.stories.create, {
+    t.mutation(internal.stories.create, {
       ...sample,
       backpackItems: sample.backpackItems.slice(0, 2),
     }),
@@ -91,7 +91,7 @@ test("create rejects an item that is not in the catalog", async () => {
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
-    t.mutation(api.stories.create, {
+    t.mutation(internal.stories.create, {
       ...sample,
       backpackItems: [
         ...sample.backpackItems.slice(0, 2),
@@ -106,7 +106,7 @@ test("create rejects the same item twice", async () => {
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
-    t.mutation(api.stories.create, {
+    t.mutation(internal.stories.create, {
       ...sample,
       backpackItems: [
         { id: "item_whisk", name: "Golden Whisk" },
@@ -122,6 +122,6 @@ test("create rejects a blank hero name", async () => {
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
-    t.mutation(api.stories.create, { ...sample, protagonistName: "  " }),
+    t.mutation(internal.stories.create, { ...sample, protagonistName: "  " }),
   ).rejects.toThrow(/hero name/);
 });

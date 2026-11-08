@@ -232,10 +232,11 @@ describe("structured setup", () => {
         })
       ).options.find((row) => row.optionId === args.outfit.optionId),
     ).toMatchObject({ withdrawn: true, active: false });
-    expect(
-      (await t.query(api.stories.get, { storyId }))?.characters[0]?.setupChoices
-        ?.outfit.key,
-    ).toBe("out_chef");
+    const savedOutfit = (await t.query(api.stories.get, { storyId }))
+      ?.characters[0]?.setupChoices?.outfit;
+    expect(savedOutfit?.kind === "catalog" ? savedOutfit.key : undefined).toBe(
+      "out_chef",
+    );
     await t.mutation(internal.migrations.seedCatalog, {});
     expect(
       (await t.query(api.catalog.listChoices, {})).options.some(
@@ -303,13 +304,13 @@ test("bounded backfill previews exact legacy matches, is repeatable and preserve
       { id: "item_kazoo", name: "Grandma's Kazoo" },
     ],
   };
-  const exact = await t.mutation(api.stories.create, legacy);
-  const unknown = await t.mutation(api.stories.create, {
+  const exact = await t.mutation(internal.stories.create, legacy);
+  const unknown = await t.mutation(internal.stories.create, {
     ...legacy,
     visualDescription: "a child-designed cloud",
     setting: "a completely different place",
   });
-  const used = await t.mutation(api.stories.create, legacy);
+  const used = await t.mutation(internal.stories.create, legacy);
   await t.run(async (ctx) => {
     const book = await ctx.db.get(used);
     if (book)

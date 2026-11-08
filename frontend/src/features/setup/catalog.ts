@@ -3,7 +3,12 @@ import { useConvexConnectionState, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useEffect, useState } from "react";
 import { useQueryDiagnostics } from "@/lib/diagnostics/query";
-import type { CatalogChoice, DraftDefaults, SetupDraft } from "./draft";
+import type {
+  CatalogChoice,
+  DraftDefaults,
+  HeroChoice,
+  SetupDraft,
+} from "./draft";
 import { useSetupSession } from "./SetupProvider";
 
 type CatalogResult = FunctionReturnType<typeof api.catalog.listChoices>;
@@ -50,7 +55,7 @@ export function selectedChoices(draft: SetupDraft) {
     draft.outfit,
     draft.quirk,
     ...draft.packed,
-  ];
+  ].filter((choice): choice is CatalogChoice => choice.kind === "catalog");
 }
 export function catalogDefaults(
   catalog: WorkshopCatalog,
@@ -127,12 +132,14 @@ export function useWorkshopCatalog() {
   };
 }
 
-export function labelFor(choices: ChoiceView[], choice: CatalogChoice): string {
+export function labelFor(choices: ChoiceView[], choice: HeroChoice): string {
+  if (choice.kind === "custom") return choice.description;
   return (
     choices.find((row) => row.optionId === choice.optionId)?.label ??
     "Unavailable choice"
   );
 }
-export function choiceFor(choices: ChoiceView[], choice: CatalogChoice) {
+export function choiceFor(choices: ChoiceView[], choice: HeroChoice) {
+  if (choice.kind === "custom") return undefined;
   return choices.find((row) => row.optionId === choice.optionId);
 }

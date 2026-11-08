@@ -9,7 +9,7 @@ import {
   selectedChoices,
   type WorkshopCatalog,
 } from "./catalog";
-import { hasHeroName } from "./draft";
+import { hasHeroName, heroReference } from "./draft";
 import { useSetupDraft } from "./SetupProvider";
 
 /**
@@ -28,21 +28,36 @@ export function useCreateStory(catalog: WorkshopCatalog) {
   const [error, setError] = useState<string | null>(null);
 
   const capacity = catalog.backpackSize;
+  const hasCustom = [
+    draft.character,
+    draft.outfit,
+    draft.quirk,
+    draft.details,
+  ].some((choice) => choice?.kind === "custom");
+  const customExpired =
+    (hasCustom &&
+      (!draft.ideaCapability ||
+        (draft.ideaSessionExpiresAt ?? 0) <= Date.now())) ||
+    [draft.character, draft.outfit, draft.quirk, draft.details].some(
+      (choice) => choice?.kind === "custom" && choice.expiresAt <= Date.now(),
+    );
   const invalid = selectedChoices(draft).some(
     (choice) =>
       !catalog.options.some(
         (option) => option.optionId === choice.optionId && !option.withdrawn,
       ),
   );
-  const blockedReason = invalid
-    ? "A choice is unavailable or withdrawn. Please replace it before starting."
-    : !connection.isWebSocketConnected
-      ? "Connect to the story server before starting a story."
-      : !hasHeroName(draft)
-        ? "Give your hero a name first."
-        : draft.packed.length !== capacity
-          ? `Pack exactly ${capacity} things first.`
-          : null;
+  const blockedReason = customExpired
+    ? "A custom idea expired. Reopen it and review it again; your choices are kept."
+    : invalid
+      ? "A choice is unavailable or withdrawn. Please replace it before starting."
+      : !connection.isWebSocketConnected
+        ? "Connect to the story server before starting a story."
+        : !hasHeroName(draft)
+          ? "Give your hero a name first."
+          : draft.packed.length !== capacity
+            ? `Pack exactly ${capacity} things first.`
+            : null;
 
   async function start() {
     if (inFlight.current || blockedReason) {
@@ -56,10 +71,22 @@ export function useCreateStory(catalog: WorkshopCatalog) {
       const args = {
         setting: reference(draft.setting),
         problem: reference(draft.problem),
-        character: reference(draft.character),
-        outfit: reference(draft.outfit),
-        quirk: reference(draft.quirk),
+        character: heroReference(draft.character),
+        outfit: heroReference(draft.outfit),
+        quirk: heroReference(draft.quirk),
         packed: draft.packed.map(reference),
+        ...(draft.details
+          ? {
+              details: {
+                kind: "custom" as const,
+                ideaId: draft.details.ideaId,
+                part: draft.details.part,
+              },
+            }
+          : {}),
+        ...(draft.ideaCapability && hasCustom
+          ? { ideaCapability: draft.ideaCapability }
+          : {}),
         kidGender: catalog.characters.find(
           (row) => row.optionId === draft.character.optionId,
         )?.supportsGender

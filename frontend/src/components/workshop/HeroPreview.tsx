@@ -9,11 +9,14 @@ export function HeroPreview({
   character,
   outfit,
   quirk,
+  size = 220,
 }: {
   character?: ChoiceView;
   outfit?: ChoiceView;
   quirk?: ChoiceView;
+  size?: number;
 }) {
+  const badge = Math.round(62 * (size / 220));
   const [failedBase, setFailedBase] = useState<string | null>(null);
   const [failedOutfit, setFailedOutfit] = useState<string | null>(null);
   const signature = (option?: ChoiceView) =>
@@ -30,37 +33,37 @@ export function HeroPreview({
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={styles.frame}
+      style={[styles.frame, { width: size, height: size }]}
     >
       <CatalogArt
         option={character}
-        size={220}
+        size={size}
         onUnavailable={() => setFailedBase(signature(character))}
       />
       {outfit && overlay ? (
         <View style={StyleSheet.absoluteFill}>
           <CatalogArt
             option={outfit}
-            size={220}
+            size={size}
             onUnavailable={() => setFailedOutfit(signature(outfit))}
           />
         </View>
       ) : null}
       {outfit && !overlay ? (
         <View style={styles.outfit}>
-          <CatalogArt option={outfit} size={62} />
+          <CatalogArt option={outfit} size={badge} />
         </View>
       ) : null}
       {quirk ? (
         <View style={styles.quirk}>
-          <CatalogArt option={quirk} size={62} />
+          <CatalogArt option={quirk} size={badge} />
         </View>
       ) : null}
     </View>
   );
 }
 const styles = StyleSheet.create({
-  frame: { width: 220, height: 220, alignSelf: "center" },
+  frame: { alignSelf: "center" },
   quirk: { position: "absolute", right: 0, bottom: 0 },
   outfit: { position: "absolute", left: 0, bottom: 0 },
 });

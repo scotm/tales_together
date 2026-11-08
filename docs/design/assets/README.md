@@ -6,6 +6,8 @@ Each curated choice has an editable SVG on a 300 × 300 canvas:
 - `outfits/`: 16 transparent outfit layers.
 - `quirks/`: 16 separate quirk icons.
 - `world-items/`: four settings, four problems and six backpack items.
+- `beats/`: four paper-theatre props (rocket, key, jack-in-the-box, storybook)
+  for chapter card styles/fallback.
 
 Keep character and outfit origins/scales identical. The app composes those
 layers; a quirk icon sits in its own badge. Titles identify the artwork, while

@@ -31,8 +31,8 @@ the existing story UI and Convex workflow remain in use.
 now owns 62 revisioned options. Internal seeding/publishing/withdrawal preserves
 stable IDs and prompt fragments; setup pins references rather than silently
 switching revisions. `stories.createFromSetup` resolves every reference on the
-server and stores immutable world/bag and hero snapshots. The legacy creation
-endpoint uses database inventory validation, and the story screen reads item
+server and stores immutable world/bag and hero snapshots. The legacy free-form creation
+endpoint is now internal, and the story screen reads item
 labels from the saved inventory. There is no source-catalogue runtime fallback.
 
 The shelves now show all 16 characters, 16 outfits and 16 quirks, with category
@@ -52,14 +52,47 @@ uncertain selections, used inventories, existing content and all media intact.
 See the [catalogue runbook](../workshop-catalogue-runbook.md) for commands,
 publishing rules and artwork maintenance.
 
-Verification: the project checks cover 47 frontend/delivery tests and 153 backend
-tests; web, iOS and Android exports compile. This includes creation/recovery,
-concurrent catalogue publishing, preserved old revisions, withdrawal, immutable
-snapshots, new database-only items, storage previews, idempotent backfill,
-expanded shelves, Shuffle, explicit gender and image failure fallbacks. No paid
-generation calls were made. Device keyboard, browser focus, screen-reader,
-sharing and responsive visual acceptance checks remain outstanding.
-Custom/spoken ideas and themed chapter/reading/delivery screens are later work.
+**W4/W5 custom and spoken ideas and W6/W7 story screens are implemented.**
+Children can type or record up to 20 seconds, edit the transcript, review a
+moderated multi-part proposal and explicitly confirm it. Private capability
+hashes, input/context fingerprints, request deduplication, conservative quotas,
+expiry/cleanup and cancellation guard the server path. Raw recordings are passed
+directly to the bounded Node action, without temporary Storage uploads. Confirmed
+custom descriptions and reviewed words are resolved into durable snapshots;
+unknown art uses neutral/text previews. Preset Shuffle keeps custom text available
+for editing, and dormant gender chips apply only to capable characters.
+
+The moderation stub is replaced by a fail-closed structured classifier for idea
+input/output and chapter pitch/prose. The old free-form creation mutation is
+internal, closing the alternate anonymous route around this boundary. Native
+capture uses `expo-audio`; web uses feature-detected MediaRecorder. The Gemini
+transcription adapter reuses the configured key/fast model (with an optional
+speech-model override), while interpretation retains the existing text-provider
+configuration. No new prose/image vendor, Python service or runtime FFmpeg was
+introduced.
+
+The story route now composes a themed director, five markers, centred serif
+reader and portrait-cover completion. Saved picks, independent writing, actual
+bag states, current/completed navigation, writing/watchdog recovery, persisted
+export stages, coverless/retry paths and save/share retries remain available.
+Four neutral SVG-derived beat illustrations bring the portable asset total to
+66 without image calls per pitch.
+
+Verification: `npm run check` covers 64 frontend/delivery tests and 171 backend
+cases, and web/iOS/Android exports compile. The deployed local synthetic speech
+check completed transcription → moderation → interpretation → moderation in
+about 3.7 seconds, preserving the blue cape, rainbow glasses and star hiccups
+while retaining the curated otter. It created no book or artwork and still
+required review. Regression tests cover capability forgery, stale/altered text
+and context, cancellation, expiry, quotas, format/duration limits, recording
+cleanup on route blur/backgrounding and existing generation/export recovery.
+See the [ideas and story-screen runbook](../workshop-ideas-runbook.md).
+
+Physical device microphone/permissions/sharing, quiet speech/invented names,
+HTTPS iPad capture, browser focus, screen-reader and responsive visual acceptance
+remain outstanding. This synthetic check does not establish recognition quality
+or safety performance with families. Durable draft restoration, custom preview
+generation and backend sequence hardening remain outside these slices.
 
 ## 1. Outcome and scope
 

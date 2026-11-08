@@ -11,11 +11,13 @@ import {
   labelFor,
   type WorkshopCatalog,
 } from "./catalog";
+import type { SetupStep } from "./draft";
 import { HeroSummary } from "./HeroStep";
 import {
   ChoiceGrid,
   Field,
   StepHeading,
+  StepProgress,
   setupStyles,
   useShelfColumns,
 } from "./parts";
@@ -33,6 +35,7 @@ export function BackpackStep({
   error,
   onBack,
   onStart,
+  onStep,
 }: {
   catalog: WorkshopCatalog;
   canStart: boolean;
@@ -41,6 +44,7 @@ export function BackpackStep({
   error: string | null;
   onBack: () => void;
   onStart: () => void;
+  onStep: (step: SetupStep) => void;
 }) {
   const { draft, dispatch } = useSetupDraft();
   const columns = useShelfColumns(3, 2);
@@ -56,8 +60,9 @@ export function BackpackStep({
 
   return (
     <View style={styles.step}>
+      <StepProgress current={draft.step} onSelect={onStep} variant="crumb" />
       <StepHeading
-        eyebrow="Step 3 · Backpack"
+        eyebrow=""
         title="Pack their bag"
         lede={`Choose ${capacity} useful things. They might save the day.`}
       />
@@ -135,7 +140,9 @@ export function BackpackStep({
           {labelFor(catalog.settings, draft.setting)} ·{" "}
           {labelFor(catalog.problems, draft.problem)}
         </Text>
-        <HeroSummary catalog={catalog} />
+        <View style={styles.summaryHero}>
+          <HeroSummary catalog={catalog} />
+        </View>
       </View>
 
       <View style={setupStyles.actions}>
@@ -164,15 +171,16 @@ export function BackpackStep({
 const styles = StyleSheet.create({
   step: { gap: spacing.xl },
   slots: { gap: spacing.sm },
-  slotRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  slotRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   slot: {
     flexGrow: 1,
     flexBasis: 160,
-    minHeight: 56,
+    minHeight: 58,
     justifyContent: "center",
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderRadius: radii.control,
-    borderWidth: 2,
+    borderWidth: 1,
     borderStyle: "dashed",
     borderColor: colors.border,
   },
@@ -183,6 +191,15 @@ const styles = StyleSheet.create({
   },
   slotLabel: { ...type.bodyStrong, color: colors.ink },
   author: { maxWidth: 520 },
-  summary: { gap: spacing.sm },
+  summary: {
+    gap: spacing.md,
+    padding: spacing.xl,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    maxWidth: 620,
+  },
   summaryLine: { ...type.body, color: colors.ink },
+  summaryHero: { maxWidth: 528, width: "100%" },
 });

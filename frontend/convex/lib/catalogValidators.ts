@@ -47,9 +47,46 @@ export const storySetupChoices = v.object({
   problem: choiceSnapshot,
   packed: v.array(choiceSnapshot),
 });
+export const heroPart = v.union(
+  v.literal("character"),
+  v.literal("outfit"),
+  v.literal("quirk"),
+  v.literal("details"),
+);
+export const customReference = v.object({
+  kind: v.literal("custom"),
+  ideaId: v.id("heroIdeas"),
+  part: heroPart,
+});
+export const heroReference = v.union(catalogReference, customReference);
+export const ideaPart = v.object({
+  part: heroPart,
+  label: v.string(),
+  description: v.string(),
+});
+export const customSnapshot = v.object({
+  kind: v.literal("custom"),
+  ideaId: v.id("heroIdeas"),
+  part: heroPart,
+  label: v.string(),
+  displayLabel: v.string(),
+  description: v.string(),
+  source: v.union(v.literal("typed"), v.literal("spoken")),
+  interpretationVersion: v.literal("v1"),
+  confirmedText: v.string(),
+});
+export const heroChoiceSnapshot = v.union(choiceSnapshot, customSnapshot);
+export const heroContext = v.object({
+  character: heroReference,
+  outfit: heroReference,
+  quirk: heroReference,
+  details: v.optional(customReference),
+  kidGender,
+});
 export const heroSetupChoices = v.object({
-  character: choiceSnapshot,
-  outfit: choiceSnapshot,
-  quirk: choiceSnapshot,
+  character: heroChoiceSnapshot,
+  outfit: heroChoiceSnapshot,
+  quirk: heroChoiceSnapshot,
+  details: v.optional(customSnapshot),
   kidGender,
 });

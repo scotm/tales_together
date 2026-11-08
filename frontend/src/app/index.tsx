@@ -16,7 +16,6 @@ import {
 } from "@/features/setup/catalog";
 import { hasHeroName, type SetupStep } from "@/features/setup/draft";
 import { HeroStep } from "@/features/setup/HeroStep";
-import { StepProgress } from "@/features/setup/parts";
 import { RecentStoriesPanel } from "@/features/setup/RecentStoriesPanel";
 import { useSetupDraft } from "@/features/setup/SetupProvider";
 import { useCreateStory } from "@/features/setup/useCreateStory";
@@ -163,7 +162,6 @@ function WorkshopContent({
         </View>
       ) : (
         <>
-          <StepProgress current={draft.step} onSelect={goTo} />
           {withdrawn ? (
             <Text
               accessibilityRole="alert"
@@ -179,12 +177,17 @@ function WorkshopContent({
             </Text>
           ) : null}
           {draft.step === "world" ? (
-            <WorldStep catalog={catalog} onNext={() => goTo("hero")} />
+            <WorldStep
+              catalog={catalog}
+              onStep={goTo}
+              onNext={() => goTo("hero")}
+            />
           ) : null}
           {draft.step === "hero" ? (
             <HeroStep
               catalog={catalog}
               nameGuarded={nameGuarded}
+              onStep={goTo}
               onBack={() => goTo("world")}
               onPackBag={() => goTo("backpack")}
             />
@@ -192,6 +195,7 @@ function WorkshopContent({
           {draft.step === "backpack" ? (
             <BackpackStep
               catalog={catalog}
+              onStep={goTo}
               canStart={!create.blockedReason && !create.creating}
               creating={create.creating}
               startBlockedReason={create.blockedReason}

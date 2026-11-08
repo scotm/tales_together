@@ -13,16 +13,21 @@ const mockReconnect = jest.fn();
 const mockCreateStory = jest.fn();
 const mockPush = jest.fn();
 const mockClient = { url: "http://192.168.50.176:3210" };
+jest.mock("@/lib/voice/recording", () => ({ startRecording: jest.fn() }));
 jest.mock("@/lib/BackendProvider", () => ({
   useReconnectBackend: () => mockReconnect,
 }));
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: mockPush }),
+  useFocusEffect: () => {},
+}));
 jest.mock(
   "react-native-safe-area-context",
   () => require("react-native-safe-area-context/jest/mock").default,
 );
 jest.mock("convex/react", () => ({
   useQuery: jest.fn(),
+  useAction: () => jest.fn(),
   useMutation: () => mockCreateStory,
   useConvex: () => mockClient,
   useConvexConnectionState: jest.fn(),
@@ -105,7 +110,7 @@ it("allows direct world selection while kept and retains both Keep switches acro
   const view = await render(<Workshop />);
   await fireEvent.press(view.getByLabelText("Keep this place"));
   await fireEvent.press(view.getByLabelText("Keep this trouble"));
-  expect(view.getByRole("button", { name: "🎲 Surprise me" })).toBeDisabled();
+  expect(view.getByRole("button", { name: "Surprise me ↻" })).toBeDisabled();
   await fireEvent.press(view.getByLabelText("Change the place"));
   await fireEvent.press(
     view.getByRole("radio", { name: "Midnight Dinosaur Museum" }),
@@ -417,7 +422,7 @@ it("keeps loaded shelves and choices available offline through a backend remount
   expect(view.getByRole("radio", { name: "Tiny dragon" })).toBeChecked();
 });
 
-it("submits an explicitly chosen Kid Explorer gender and clears it when changing character", async () => {
+it("applies an explicit Kid Explorer gender only to capable characters and retains it when revisiting", async () => {
   const view = await render(<Workshop />);
   await nameHero(view);
   await fireEvent.press(view.getByRole("tab", { name: "Character" }));
@@ -443,4 +448,10 @@ it("submits an explicitly chosen Kid Explorer gender and clears it when changing
   expect(mockCreateStory).toHaveBeenLastCalledWith(
     expect.objectContaining({ kidGender: "open" }),
   );
+  await fireEvent.press(view.getByLabelText("Step 2 of 3: Hero"));
+  await fireEvent.press(view.getByRole("tab", { name: "Character" }));
+  await fireEvent.press(
+    view.getByRole("radio", { name: "Brave Kid Explorer" }),
+  );
+  expect(view.getByRole("radio", { name: "Girl" })).toBeChecked();
 });
