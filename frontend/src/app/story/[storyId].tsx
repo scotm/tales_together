@@ -8,7 +8,7 @@ import {
   useQuery,
 } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -21,6 +21,11 @@ import {
 } from "react-native";
 import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
 import { useQueryDiagnostics } from "@/lib/diagnostics/query";
+import {
+  drawingPhrases,
+  useRotatingPhrase,
+  writingPhrases,
+} from "@/lib/loadingPhrases";
 import { recapSentence } from "@/lib/recap";
 import { bookDeliveryLabel, saveBook } from "@/lib/saveBook";
 
@@ -32,6 +37,34 @@ const chapterStatusLabel = {
   REVIEWING: "read it",
   LOCKED: "read again",
 } as const;
+
+/**
+ * Provider calls can run for a minute, so say something is happening. Mounted
+ * only while the work runs; `timeoutMs` hides it when the work will never
+ * arrive (art generation can be switched off server-side).
+ */
+function Working({
+  phrases,
+  timeoutMs,
+}: {
+  phrases: readonly string[];
+  timeoutMs?: number;
+}) {
+  const phrase = useRotatingPhrase(phrases);
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    if (!timeoutMs) return;
+    const timer = setTimeout(() => setExpired(true), timeoutMs);
+    return () => clearTimeout(timer);
+  }, [timeoutMs]);
+  if (expired) return null;
+  return (
+    <View accessibilityLiveRegion="polite" style={styles.working}>
+      <ActivityIndicator />
+      <Text style={styles.muted}>{phrase}…</Text>
+    </View>
+  );
+}
 
 export default function StoryScreen() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
@@ -282,6 +315,7 @@ export default function StoryScreen() {
               );
             })}
 
+            {isWriting ? <Working phrases={writingPhrases} /> : null}
             {chapter.chosenBeat && chapter.paragraphs.length === 0 ? (
               <Pressable
                 accessibilityRole="button"
@@ -326,6 +360,10 @@ export default function StoryScreen() {
 
         {chapter && chapter.paragraphs.length > 0 ? (
           <View style={styles.section}>
+            {chapter.illustrationUrl ||
+            chapter.extractionStatus === "FAILED" ? null : (
+              <Working phrases={drawingPhrases} timeoutMs={90_000} />
+            )}
             {chapter.paragraphs.map((paragraph, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: append-only list
               <Text key={`${chapter._id}-${index}`} style={styles.paragraph}>
@@ -467,6 +505,7 @@ const styles = StyleSheet.create({
   muted: { color: "#78716C" },
   recap: { fontSize: 15, color: "#57534E", fontStyle: "italic" },
   section: { marginTop: 16, gap: 8 },
+  working: { flexDirection: "row", alignItems: "center", gap: 8 },
   sectionTitle: { fontSize: 19, fontWeight: "700", color: "#1F1A17" },
   card: {
     backgroundColor: "#FFFFFF",
