@@ -14,6 +14,8 @@ vi.mock("./llm/provider", async (original) => ({
   getTextProvider: vi.fn(),
 }));
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 const text = "A blue cape, rainbow glasses and hiccups that make stars.";
 const patch = [
   {
@@ -39,7 +41,7 @@ beforeEach(() => {
 });
 afterEach(() => consoleSpy.mockRestore());
 async function setup() {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const options = (await t.query(api.catalog.listChoices, {})).options;
   const ref = (key: string) => {

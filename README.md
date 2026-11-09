@@ -13,7 +13,8 @@ docs/       Product, prompt, backend and EPUB design
 
 - **Client:** Expo SDK 58, Expo Router, React Native Web, TypeScript.
 - **Backend:** Convex. Self-hosted via Docker for local development; hosted Convex for production.
-- **v0 scope:** text + one static illustration + EPUB export. Ages 7–9, five chapters, no accounts.
+- **v0 scope:** text + one static illustration + EPUB export. Ages 7–9, five chapters.
+- **Access:** invite-only Clerk sign-in for family and friends; stories have no owner.
 
 ## Setup
 
@@ -24,13 +25,18 @@ docker compose up -d
 docker compose exec backend ./generate_admin_key.sh
 ```
 
-Put the key and URL in `frontend/.env.local` (see `frontend/.env.example`), then:
+Put the key, URL and Clerk publishable key in `frontend/.env.local` (see
+`frontend/.env.example`), then:
 
 ```bash
 cd frontend
 npm install
+npx convex env set CLERK_JWT_ISSUER_DOMAIN https://<instance>.clerk.accounts.dev
 npx convex dev
 ```
+
+Sign-in is invite-only (Clerk). Add yourself in the Clerk dashboard under Users;
+in development, `you+clerk_test@example.com` signs in with the code `424242`.
 
 In a second terminal:
 

@@ -68,6 +68,11 @@ inspection, retention and cost evidence, delivered in five slices. D0–D4 are
 implemented; see the **[diagnostics runbook](./diagnostics-runbook.md)** for
 collecting a report, finding a trace, health checks, purge, usage and receipts.
 
+**[Deployment plan (draft)](./08-deployment-plan.md)** — hosting options for
+sharing the app with family and friends (recommended: Vercel static web +
+Convex Cloud, gated by Clerk invite-only sign-in, 10 books a day), free-tier
+fit, setup steps, and the blockers to fix before publishing a link.
+
 **[Design notes](./design/)** — `asset-backlog.md` (graphics still needed, already v0-scoped) and
 `figcraft.md` (how to drive the FigCraft source build).
 

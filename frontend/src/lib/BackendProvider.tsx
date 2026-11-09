@@ -1,5 +1,8 @@
-import { ConvexProvider } from "convex/react";
+import { ClerkProvider, useAuth } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { createContext, type ReactNode, useContext, useState } from "react";
+import { publishableKey } from "./clerk";
 import { convex, createConvexClient } from "./convex";
 import { useDiagnostics } from "./diagnostics/DiagnosticsProvider";
 
@@ -30,9 +33,13 @@ export function BackendProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <RecoveryContext.Provider value={reconnect}>
-      <ConvexProvider client={client}>{children}</ConvexProvider>
-    </RecoveryContext.Provider>
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <RecoveryContext.Provider value={reconnect}>
+        <ConvexProviderWithClerk client={client} useAuth={useAuth}>
+          {children}
+        </ConvexProviderWithClerk>
+      </RecoveryContext.Provider>
+    </ClerkProvider>
   );
 }
 

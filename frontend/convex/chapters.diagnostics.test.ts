@@ -14,6 +14,8 @@ vi.mock("./lib/config", async (importOriginal) => ({
   PROVIDER_RETRY_MAX_MS: 5,
 }));
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -21,7 +23,7 @@ afterEach(() => {
 });
 
 async function seed() {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(internal.stories.create, {
     title: "The Windy Kite",
@@ -69,7 +71,9 @@ function useProvider(fetchImpl: unknown) {
   vi.mocked(getTextProvider).mockReturnValue(provider);
 }
 
-async function diagnostics(t: ReturnType<typeof convexTest>) {
+async function diagnostics(
+  t: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+) {
   return await t.run(async (ctx) => {
     const operations = await ctx.db.query("diagnosticOperations").collect();
     const events = await ctx.db.query("diagnosticEvents").collect();

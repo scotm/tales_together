@@ -6,6 +6,16 @@ import { useLocalSearchParams } from "expo-router";
 import { saveBook } from "@/lib/saveBook";
 import StoryScreen from "../app/story/[storyId]";
 
+const mockRememberStory = jest.fn();
+// Sign-in and the device shelf are covered by their own tests.
+jest.mock("@/features/auth/RequireSignIn", () => ({
+  RequireSignIn: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock("@/features/auth/SignOutLink", () => ({ SignOutLink: () => null }));
+jest.mock("@/lib/storyShelf", () => ({
+  useStoryShelf: () => [],
+  rememberStory: (storyId: string) => mockRememberStory(storyId),
+}));
 jest.mock("@/lib/BackendProvider", () => ({
   useReconnectBackend: () => jest.fn(),
 }));
@@ -155,6 +165,8 @@ it("reopens a finished chapter from the list", async () => {
   const view = await render(<StoryScreen />);
   expect(view.getByText("Chapter two words.")).toBeTruthy();
   expect(view.queryByText("Chapter one words.")).toBeNull();
+  // An opened link joins this device's Recent stories.
+  expect(mockRememberStory).toHaveBeenCalledWith("story_1");
 
   await fireEvent.press(
     view.getByRole("button", { name: "Chapter 1: The Kite Chase. Read again" }),
@@ -355,4 +367,6 @@ it("distinguishes unresolved and missing stories while preserving a way back to 
   await view.rerender(<StoryScreen />);
   expect(view.getByText("Story not found")).toBeTruthy();
   expect(view.queryByLabelText("Loading story")).toBeNull();
+  // Only stories that exist join this device's shelf.
+  expect(mockRememberStory).not.toHaveBeenCalled();
 });

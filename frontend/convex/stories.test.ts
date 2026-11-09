@@ -5,6 +5,8 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 
 const sample = {
   title: "Barnaby and the Runaway Cake",
@@ -23,7 +25,7 @@ const sample = {
 };
 
 test("create seeds five chapters with arc roles in order", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(internal.stories.create, sample);
 
@@ -46,7 +48,7 @@ test("create seeds five chapters with arc roles in order", async () => {
 });
 
 test("get returns story, chapters and characters", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(internal.stories.create, sample);
 
@@ -63,7 +65,7 @@ test("get returns story, chapters and characters", async () => {
 });
 
 test("create keeps a trimmed typed author name", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(internal.stories.create, {
     ...sample,
@@ -75,7 +77,7 @@ test("create keeps a trimmed typed author name", async () => {
 });
 
 test("create rejects a backpack that is not exactly three items", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
@@ -87,7 +89,7 @@ test("create rejects a backpack that is not exactly three items", async () => {
 });
 
 test("create rejects an item that is not in the catalog", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
@@ -102,7 +104,7 @@ test("create rejects an item that is not in the catalog", async () => {
 });
 
 test("create rejects the same item twice", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(
@@ -118,7 +120,7 @@ test("create rejects the same item twice", async () => {
 });
 
 test("create rejects a blank hero name", async () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
 
   await expect(

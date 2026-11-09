@@ -4,6 +4,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { action, internalAction } from "../_generated/server";
+import { requireMember } from "../lib/access";
 import {
   createDiagnostics,
   type DiagnosticContext,
@@ -254,8 +255,10 @@ async function trackedBuild(
 
 export const buildEpub = action({
   args: { storyId: v.id("stories") },
-  handler: async (ctx, { storyId }): Promise<Id<"_storage">> =>
-    trackedBuild(ctx, storyId),
+  handler: async (ctx, { storyId }): Promise<Id<"_storage">> => {
+    await requireMember(ctx);
+    return await trackedBuild(ctx, storyId);
+  },
 });
 
 /** Scheduler target: only internal functions may be scheduled. */

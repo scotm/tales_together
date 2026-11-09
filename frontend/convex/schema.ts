@@ -180,6 +180,10 @@ export default defineSchema({
   })
     .index("by_key", ["key"])
     .index("by_expires", ["expiresAt"]),
+  bookQuota: defineTable({
+    day: v.string(),
+    books: v.number(),
+  }).index("by_day", ["day"]),
   catalogOptions: defineTable({
     ...catalogContent,
     revision: v.number(),

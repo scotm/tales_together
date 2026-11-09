@@ -23,6 +23,7 @@ import type * as fixtures_legacyCatalog from "../fixtures/legacyCatalog.js";
 import type * as heroIdeaState from "../heroIdeaState.js";
 import type * as heroIdeas from "../heroIdeas.js";
 import type * as imageSamples from "../imageSamples.js";
+import type * as lib_access from "../lib/access.js";
 import type * as lib_catalogValidators from "../lib/catalogValidators.js";
 import type * as lib_config from "../lib/config.js";
 import type * as lib_diagnostics from "../lib/diagnostics.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   heroIdeaState: typeof heroIdeaState;
   heroIdeas: typeof heroIdeas;
   imageSamples: typeof imageSamples;
+  "lib/access": typeof lib_access;
   "lib/catalogValidators": typeof lib_catalogValidators;
   "lib/config": typeof lib_config;
   "lib/diagnostics": typeof lib_diagnostics;

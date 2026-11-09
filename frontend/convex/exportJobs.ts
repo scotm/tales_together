@@ -6,6 +6,7 @@ import {
   type MutationCtx,
   mutation,
 } from "./_generated/server";
+import { requireMember } from "./lib/access";
 import { GENERATION_LEASE_MS } from "./lib/config";
 import { operationIdFor, safeOperationId } from "./lib/diagnostics";
 import { retryProgress } from "./schema";
@@ -70,6 +71,7 @@ export const retry = mutation({
     clientOperationId: v.optional(v.string()),
   },
   handler: async (ctx, { storyId, clientOperationId }) => {
+    await requireMember(ctx);
     const story = await ctx.db.get(storyId);
     if (story?.status !== "COMPLETED") {
       throw new ConvexError("Finish the book before exporting it.");

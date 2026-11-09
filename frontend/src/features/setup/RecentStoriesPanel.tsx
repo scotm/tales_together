@@ -11,8 +11,8 @@ import { WorkshopButton } from "@/components/workshop/WorkshopButton";
 import type { RecentStories } from "./useRecentStories";
 
 /**
- * The last ten stories on this deployment. `listRecent` has no owner filter,
- * so this is not "your library". Opening/closing it keeps the setup draft.
+ * Stories made or opened on this device. There is no account library: other
+ * guests' books stay off this shelf. Opening/closing it keeps the setup draft.
  */
 export function RecentStoriesPanel({
   recent,
@@ -50,7 +50,9 @@ export function RecentStoriesPanel({
         </Text>
       ) : null}
       {stories?.length === 0 ? (
-        <Text style={styles.muted}>No stories yet. Make the first one.</Text>
+        <Text style={styles.muted}>
+          No stories on this device yet. Make the first one.
+        </Text>
       ) : null}
       {stories?.map((story) => (
         <Pressable

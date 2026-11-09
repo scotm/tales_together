@@ -1,8 +1,10 @@
 import { api } from "@convex/_generated/api";
 import { useConvexConnectionState, useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
+import { rememberStory } from "@/lib/storyShelf";
 import {
   catalogDefaults,
   reference,
@@ -98,12 +100,17 @@ export function useCreateStory(catalog: WorkshopCatalog) {
       const storyId = await diagnostics.track("stories.createFromSetup", () =>
         createStory(args),
       );
+      void rememberStory(storyId);
       router.push({ pathname: "/story/[storyId]", params: { storyId } });
       const defaults = catalogDefaults(catalog);
       if (defaults) dispatch({ type: "reset", defaults });
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Could not start a story",
+        cause instanceof ConvexError
+          ? String(cause.data)
+          : cause instanceof Error
+            ? cause.message
+            : "Could not start a story",
       );
     } finally {
       inFlight.current = false;

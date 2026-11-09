@@ -2,17 +2,22 @@ import { api } from "@convex/_generated/api";
 import { useConvexConnectionState, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { useQueryDiagnostics } from "@/lib/diagnostics/query";
+import { useStoryShelf } from "@/lib/storyShelf";
 
 /** How long an unresolved query/socket may spin before we offer recovery. */
 export const CONNECTION_TIMEOUT_MS = 10_000;
 
 /**
- * Recent stories plus the connection health derived from them. Subscribed
+ * This device's recent stories plus the connection health derived from them. Subscribed
  * for the whole setup screen so cached rows stay visible offline and the
  * stalled-connection notice appears even while the panel is closed.
  */
 export function useRecentStories() {
-  const result = useQuery(api.stories.listRecent);
+  const storyIds = useStoryShelf();
+  const result = useQuery(
+    api.stories.listByIds,
+    storyIds ? { storyIds } : "skip",
+  );
   const [cached, setCached] = useState(result);
   useEffect(() => {
     if (result !== undefined) setCached(result);
@@ -20,7 +25,7 @@ export function useRecentStories() {
   const stories = result ?? cached;
   const connection = useConvexConnectionState();
   useQueryDiagnostics(
-    "stories.listRecent",
+    "stories.listByIds",
     result,
     connection.isWebSocketConnected,
   );

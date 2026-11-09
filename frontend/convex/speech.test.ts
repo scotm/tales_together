@@ -8,6 +8,8 @@ import { transcribeAudio } from "./speech/transcribe";
 
 vi.mock("./speech/transcribe", () => ({ transcribeAudio: vi.fn() }));
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 let logger: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.mocked(transcribeAudio)
@@ -17,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => logger.mockRestore());
 async function setup() {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   const { capability } = await t.action(api.heroIdeas.openSession, {});
   const audio = Uint8Array.from(atob(recordings.m4a), (char) =>
     char.charCodeAt(0),
