@@ -6,6 +6,24 @@ import { Button, Text, TextInput } from "react-native";
 import { BackendProvider, useReconnectBackend } from "./BackendProvider";
 import { convex, createConvexClient } from "./convex";
 
+jest.mock("./clerk", () => ({ publishableKey: "pk_test_example" }));
+jest.mock("@clerk/expo", () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+  useAuth: jest.fn(),
+}));
+jest.mock("@clerk/expo/token-cache", () => ({ tokenCache: undefined }));
+jest.mock("convex/react-clerk", () => {
+  const { ConvexProvider } = jest.requireActual("convex/react");
+  return {
+    ConvexProviderWithClerk: ({
+      client,
+      children,
+    }: {
+      client: unknown;
+      children: React.ReactNode;
+    }) => <ConvexProvider client={client}>{children}</ConvexProvider>,
+  };
+});
 jest.mock("./convex", () => ({
   convex: {
     url: "http://old:3210",

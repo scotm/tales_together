@@ -2,6 +2,7 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import { useConvexConnectionState, useQuery } from "convex/react";
 import { getFunctionName } from "convex/server";
+import { ConvexError } from "convex/values";
 import { View } from "react-native";
 import { SetupProvider } from "@/features/setup/SetupProvider";
 import HomeScreen from "../app/index";
@@ -13,6 +14,16 @@ const mockReconnect = jest.fn();
 const mockCreateStory = jest.fn();
 const mockPush = jest.fn();
 const mockClient = { url: "http://192.168.50.176:3210" };
+const mockRememberStory = jest.fn();
+// Sign-in and the device shelf are covered by their own tests.
+jest.mock("@/features/auth/RequireSignIn", () => ({
+  RequireSignIn: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock("@/features/auth/SignOutLink", () => ({ SignOutLink: () => null }));
+jest.mock("@/lib/storyShelf", () => ({
+  useStoryShelf: () => [],
+  rememberStory: (storyId: string) => mockRememberStory(storyId),
+}));
 jest.mock("@/lib/voice/recording", () => ({ startRecording: jest.fn() }));
 jest.mock("@/lib/BackendProvider", () => ({
   useReconnectBackend: () => mockReconnect,
@@ -96,7 +107,9 @@ it("guards every path to Backpack and retains choices through tabs and Recent st
   expect(view.queryByText("Start the story")).toBeNull();
   await fireEvent.changeText(view.getByLabelText("Hero name"), "Mira");
   await fireEvent.press(view.getByText("Recent stories"));
-  expect(view.getByText("No stories yet. Make the first one.")).toBeTruthy();
+  expect(
+    view.getByText("No stories on this device yet. Make the first one."),
+  ).toBeTruthy();
   await fireEvent.press(view.getByText("Back to the workshop"));
   expect(view.getByDisplayValue("Mira")).toBeTruthy();
   await fireEvent.press(view.getByRole("tab", { name: "Character" }));
@@ -161,6 +174,7 @@ it("enforces three bag items and submits the selected world, hero and author onc
     pathname: "/story/[storyId]",
     params: { storyId: "story_new" },
   });
+  expect(mockRememberStory).toHaveBeenCalledWith("story_new");
   // The successful draft is reset for the next book.
   expect(view.getByText("Build a world")).toBeTruthy();
   await fireEvent.press(view.getByLabelText("Step 3 of 3: Backpack"));
@@ -189,6 +203,24 @@ it("preserves the draft on creation failure and lets the child retry", async () 
       params: { storyId: "story_retry" },
     }),
   );
+});
+
+it("shows the server's friendly refusal when the daily book limit is reached", async () => {
+  mockCreateStory.mockRejectedValueOnce(
+    new ConvexError(
+      "The story library is full for today. Please try again tomorrow.",
+    ),
+  );
+  const view = await render(<Workshop />);
+  await packBag(view);
+  await fireEvent.press(view.getByText("Start the story"));
+  expect(
+    view.getByText(
+      "The story library is full for today. Please try again tomorrow.",
+    ),
+  ).toBeTruthy();
+  expect(mockPush).not.toHaveBeenCalled();
+  expect(mockRememberStory).not.toHaveBeenCalled();
 });
 
 it("keeps a pending creation stable and blocks retries that could discard it", async () => {

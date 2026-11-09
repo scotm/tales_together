@@ -17,6 +17,60 @@ Revisit when:
 
 ---
 
+## Invite-only sign-in, daily book cap, per-device shelf — accepted, 2026-11-09
+
+**Decision:** sharing with family and friends at `talestogether.xyz` (see the
+[deployment plan](./08-deployment-plan.md)) needs a gate in Convex, not just in
+the UI: the Convex URL ships in the public bundle. Clerk runs in **Invite-only**
+mode with email-code sign-in only (no password, username or social providers).
+Every public Convex function starts with `requireMember(ctx)`; a source scan in
+`convex/access.test.ts` fails if one does not. `diagnostics.ping` stays public
+(timestamp only) so the connection check works before sign-in. Sign-in is a
+gate, not ownership: any guest can open any story id, and the v0 no-owner model
+stands. This supersedes "no accounts" for access only.
+
+**Spend:** `stories.createFromSetup` reserves one of `DAILY_BOOK_LIMIT` (default
+10) new books per UTC day in `bookQuota`, inside the creating mutation, so a
+refused or failed create releases it. Refusal is a `ConvexError`, so the
+friendly text survives production error redaction. Chapter retries and art
+regeneration are not counted; the Gemini/Surplus keys are prepaid, which bounds
+the worst case at their balance (about US$20–30).
+
+**Privacy:** `stories:listRecent` returned the ten newest full story documents
+to anyone. It is replaced by `stories:listByIds`. Each device keeps up to 20 ids
+it created or opened (`localStorage` on web, a document file on native), and the
+query returns only id/title/chapter count for those.
+
+**Client:** `ClerkProvider` + `ConvexProviderWithClerk` live in
+`BackendProvider`. `RequireSignIn` wraps the workshop and story screens, not the
+navigator, so a shared `/story/<id>` link keeps its URL through sign-in and
+Help → Diagnostics stays reachable while signed out. The sign-in screen is a
+custom email-code flow on Clerk's `useSignIn()` "future" API. Clerk's prebuilt
+native views need a development build and do not run on web or Expo Go.
+
+**Verified (2026-11-09):** the Clerk session token carries `aud: "convex"`
+(integration on), and the instance config was changed with `clerk config patch`.
+`npm run check` passes (74 UI, 178 backend). The web export builds. Against an
+isolated local backend in a browser: an uninvited email is refused with the
+guest-list message; an invited `+clerk_test` user signs in with `424242`; a
+signed-out `/story/<id>` link shows only the sign-in form, then the story after
+sign-in, and joins the device shelf; a CLI call without identity is refused.
+No production deployment exists yet. Native sign-in is untested on a device.
+
+**Gotchas:** adding `@clerk/expo` pulls in wallet SDKs whose types change how
+React Native's global `fetch` overloads merge; `vi.fn<typeof fetch>()` stopped
+fitting `typeof fetch`. `requestProviderJson` now takes the narrower
+`ProviderFetch`. Deploys fail until `CLERK_JWT_ISSUER_DOMAIN` is set on the
+target Convex deployment (including the shared local Docker backend). Hosted
+Convex redacts plain `Error` messages, so user-facing refusals must be
+`ConvexError`. `convex-test`'s `withIdentity()` returns the same accessor type
+minus `registerComponent`; helper parameters typed as the root need adjusting.
+
+**Revisit when:** a guest needs a private library (ownership), native builds
+ship, or real use shows chapter retries need their own cap.
+
+---
+
 ## Reviewed custom/spoken ideas and workshop story screens — accepted, 2026-11-08
 
 **Decision:** custom input joins one reviewed flow: type or foreground-record,

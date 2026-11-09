@@ -6,6 +6,8 @@ import {
   HeaderButton,
   WorkshopShell,
 } from "@/components/workshop/WorkshopShell";
+import { RequireSignIn } from "@/features/auth/RequireSignIn";
+import { SignOutLink } from "@/features/auth/SignOutLink";
 import { BackpackStep } from "@/features/setup/BackpackStep";
 import { CatalogBoundary } from "@/features/setup/CatalogBoundary";
 import { ConnectionNotice } from "@/features/setup/ConnectionNotice";
@@ -32,6 +34,14 @@ import { useDiagnostics } from "@/lib/diagnostics/DiagnosticsProvider";
  * the session-scoped setup draft; nothing is saved until Start the story.
  */
 export default function WorkshopScreen() {
+  return (
+    <RequireSignIn>
+      <Workshop />
+    </RequireSignIn>
+  );
+}
+
+function Workshop() {
   const recent = useRecentStories();
   const reconnect = useReconnectBackend();
   const diagnostics = useDiagnostics();
@@ -151,6 +161,7 @@ function WorkshopContent({
           <HeaderButton label="Recent stories" onPress={onRecent} />
         )
       }
+      footerActions={create.creating ? null : <SignOutLink />}
     >
       <ConnectionNotice recent={recent} />
       {create.creating ? (

@@ -13,6 +13,7 @@ import {
   HeaderButton,
   WorkshopShell,
 } from "@/components/workshop/WorkshopShell";
+import { RequireSignIn } from "@/features/auth/RequireSignIn";
 import { BookCompletion } from "@/features/story/BookCompletion";
 import { ChapterDirector } from "@/features/story/ChapterDirector";
 import { ChapterNavigation } from "@/features/story/ChapterNavigation";
@@ -20,8 +21,17 @@ import { ChapterReader } from "@/features/story/ChapterReader";
 import { storyStyles } from "@/features/story/storyStyles";
 import { useStoryWorkshop } from "@/features/story/useStoryWorkshop";
 import { useReconnectBackend } from "@/lib/BackendProvider";
+import { rememberStory } from "@/lib/storyShelf";
 
 export default function StoryScreen() {
+  return (
+    <RequireSignIn>
+      <Story />
+    </RequireSignIn>
+  );
+}
+
+function Story() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -29,6 +39,10 @@ export default function StoryScreen() {
   const workshop = useStoryWorkshop(storyId);
   const { story, chapter, allLocked, error, connection } = workshop;
   const [timedOut, setTimedOut] = useState(false);
+  const found = Boolean(story);
+  useEffect(() => {
+    if (found) void rememberStory(storyId);
+  }, [found, storyId]);
   useEffect(() => {
     if (story !== undefined) {
       setTimedOut(false);

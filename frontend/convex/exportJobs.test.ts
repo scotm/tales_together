@@ -10,6 +10,8 @@ vi.mock("./llm/image", async (importOriginal) => ({
   createGeminiImageGenerator: vi.fn(),
 }));
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 beforeEach(() => {
   // JSZip uses setImmediate internally; keep it on the real event loop.
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -22,7 +24,7 @@ afterEach(() => {
 });
 
 async function seed() {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(internal.stories.create, {
     title: "Kites",

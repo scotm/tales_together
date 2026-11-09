@@ -15,8 +15,8 @@ targets, not existing code. Check `frontend/` before building on them.
 - `frontend/` — Expo app. Routes in `src/app/` (Expo Router); Convex functions in `convex/`; shared
   code in `src/lib/`. Runs on web, iOS and Android via React Native Web.
 - `frontend/convex/schema.ts` — the only source of truth for the data model.
-  `catalogOptions`, `heroIdeaSessions`, `heroIdeas`, `heroIdeaQuota`, `stories`,
-  `characters`, `chapters`, `diagnosticOperations`, `diagnosticEvents`,
+  `catalogOptions`, `heroIdeaSessions`, `heroIdeas`, `heroIdeaQuota`, `bookQuota`,
+  `stories`, `characters`, `chapters`, `diagnosticOperations`, `diagnosticEvents`,
   `diagnosticReceipts`, `diagnosticQuota`.
 - `design/cover_image/` — standalone SVG cover templates and `generate_cover_image.py`; not wired
   into the app, and its extras (lxml, resvg, TTF fonts) are not installed.
@@ -35,7 +35,8 @@ Frontend (`cd frontend`, uses `npm`):
 - One UI test: `npx jest src/path/file.test.tsx`
 - One backend test: `npx vitest run convex/stories.test.ts`
 - Web build: `npx expo export --platform web` (writes `dist/`).
-- `npx convex deploy` — hosted deployment.
+- `npx convex deploy` — hosted deployment. Vercel runs it via `frontend/vercel.json`; see
+  `docs/08-deployment-plan.md`.
 - `npm run workshop:assets` — generate portable previews from SVG masters.
 
 Root: `make check` (same as `npm run check`).
@@ -58,8 +59,16 @@ Root: `make check` (same as `npm run check`).
   file access diverge — split with `.web.tsx` / `.native.tsx` instead of platform checks everywhere.
 - Styling is React Native `StyleSheet` today. NativeWind/Tailwind is **not installed**; don't add
   Tailwind classes or a `tailwind.config.*` until that decision is implemented.
-- v0 has no accounts: the story id in the URL is the only access control. Keep it unguessable and
-  don't add features that assume an owner.
+- Access is invite-only Clerk sign-in, enforced in Convex: every public function starts with
+  `await requireMember(ctx)` (`convex/access.test.ts` fails otherwise; `diagnostics.ping` is the
+  one exception). Sign-in is a gate, not ownership: any guest with a story id can open it, so keep
+  ids unguessable and don't add features that assume an owner.
+- Convex needs `CLERK_JWT_ISSUER_DOMAIN` on every deployment (`npx convex env set …`) and the app
+  needs `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `frontend/.env.local`. Add guests in the Clerk
+  dashboard (Users → Create user, email only); development accepts `+clerk_test` emails with code
+  `424242`.
+- New books are capped per UTC day (`DAILY_BOOK_LIMIT`, default 10) in `stories.createFromSetup`.
+  "Recent stories" is per device (`src/lib/storyShelf.ts`); there is no deployment-wide list.
 - Convex actions are capped (10 min Node, 30 min Convex runtime, 512 MiB Node) and have no FFmpeg
   binary. Media work stays external.
 - Generated/ignored, never hand-edit or commit: `frontend/node_modules/`, `frontend/.expo/`,

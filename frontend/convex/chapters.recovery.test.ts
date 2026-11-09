@@ -10,6 +10,8 @@ import schema from "./schema";
 vi.mock("./llm/moderation", () => ({ moderate: async () => ({ ok: true }) }));
 vi.mock("./llm/provider", () => ({ getTextProvider: vi.fn() }));
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 const prose = Array.from(
   { length: 40 },
   () => "Mira held the kite and ran past the boats.",
@@ -23,7 +25,7 @@ afterEach(() => {
 });
 
 async function seed() {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const storyId = await t.mutation(internal.stories.create, {
     title: "The Windy Kite",

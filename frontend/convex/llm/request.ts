@@ -162,6 +162,12 @@ function normalizeFailure(
   });
 }
 
+/** The only fetch shape providers need; any `fetch` implementation fits. */
+export type ProviderFetch = (
+  url: string,
+  init: RequestInit,
+) => Promise<Response>;
+
 /** Retry only the HTTP request, never parsing/validation or database writes. */
 export async function requestProviderJson<T>(options: {
   provider: string;
@@ -169,7 +175,7 @@ export async function requestProviderJson<T>(options: {
   maxAttempts?: number;
   url: string;
   init: RequestInit;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: ProviderFetch;
   progress?: RequestProgress;
   onResponse?: (response: Response) => void;
 }): Promise<T> {

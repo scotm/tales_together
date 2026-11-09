@@ -8,8 +8,10 @@ import { WORLD_PROBLEMS, WORLD_SETTINGS } from "./fixtures/legacyCatalog";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 async function setup() {
-  const t = convexTest(schema, modules);
+  const t = convexTest(schema, modules).withIdentity(guest);
   await t.mutation(internal.migrations.seedCatalog, {});
   const catalog = await t.query(api.catalog.listChoices, {});
   const ref = (key: string) => {
@@ -257,7 +259,9 @@ describe("structured setup", () => {
       await expect(
         t.mutation(api.stories.createFromSetup, { ...args, ...patch }),
       ).rejects.toThrow();
-    expect(await t.query(api.stories.listRecent, {})).toHaveLength(0);
+    expect(
+      await t.run((ctx) => ctx.db.query("stories").collect()),
+    ).toHaveLength(0);
   });
 
   test("supports new database items and labels without source-code changes", async () => {

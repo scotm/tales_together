@@ -11,6 +11,7 @@ import {
   mutation,
 } from "./_generated/server";
 import { queueExport } from "./exportJobs";
+import { requireMember } from "./lib/access";
 import { GENERATION_LEASE_MS, PROSE_MIN_WORDS } from "./lib/config";
 import {
   createDiagnostics,
@@ -217,8 +218,10 @@ export const pitchChapter = action({
     chapterId: v.id("chapters"),
     clientOperationId: v.optional(v.string()),
   },
-  handler: (ctx, { chapterId, clientOperationId }) =>
-    runPitch(ctx, chapterId, undefined, clientOperationId),
+  handler: async (ctx, { chapterId, clientOperationId }) => {
+    await requireMember(ctx);
+    return await runPitch(ctx, chapterId, undefined, clientOperationId);
+  },
 });
 
 /** Only internal functions may be scheduled; same body as the client call. */
@@ -235,6 +238,7 @@ export const pitchNextChapter = internalAction({
 export const chooseBeat = mutation({
   args: { chapterId: v.id("chapters"), cardId: v.string() },
   handler: async (ctx, { chapterId, cardId }) => {
+    await requireMember(ctx);
     const chapter = await ctx.db.get(chapterId);
     if (!chapter) throw new Error("chapter not found");
     if (chapter.paragraphs.length > 0 || chapter.status === "WRITING") {
@@ -399,6 +403,7 @@ export const writeChapter = action({
     clientOperationId: v.optional(v.string()),
   },
   handler: async (ctx, { chapterId, clientOperationId }): Promise<string[]> => {
+    await requireMember(ctx);
     const { story, chapter, characters, prior } = await ctx.runQuery(
       internal.chapters.getChapterContext,
       { chapterId },
@@ -790,6 +795,7 @@ export const lockChapter = mutation({
     clientOperationId: v.optional(v.string()),
   },
   handler: async (ctx, { chapterId, clientOperationId }) => {
+    await requireMember(ctx);
     const chapter = await ctx.db.get(chapterId);
     if (!chapter) throw new Error("chapter not found");
     if (chapter.status === "LOCKED") return;

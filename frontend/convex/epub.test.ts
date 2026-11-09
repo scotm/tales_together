@@ -6,11 +6,13 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+// Invited Clerk guests are the only callers of public functions.
+const guest = { subject: "user_guest" };
 
 test.each([true, false])(
   "exports a complete archive with cover present: %s",
   async (hasCover) => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, modules).withIdentity(guest);
     await t.mutation(internal.migrations.seedCatalog, {});
     const storyId = await t.mutation(internal.stories.create, {
       title: "The Windy Kite",

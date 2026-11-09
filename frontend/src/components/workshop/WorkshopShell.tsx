@@ -22,10 +22,12 @@ const SHOW_WORKSHOP_PILL = 900;
 export function WorkshopShell({
   children,
   headerActions,
+  footerActions,
   maxWidth = layout.contentMaxWidth,
 }: {
   children: ReactNode;
   headerActions?: ReactNode;
+  footerActions?: ReactNode;
   maxWidth?: number;
 }) {
   const router = useRouter();
@@ -64,14 +66,14 @@ export function WorkshopShell({
               <Text style={styles.footerText}>
                 Made for curious minds, big and small.
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Help & diagnostics"
-                onPress={() => router.push("/diagnostics")}
-                style={styles.footerLink}
-              >
-                <Text style={styles.footerLinkLabel}>Need a hand?</Text>
-              </Pressable>
+              <View style={styles.footerActions}>
+                {footerActions}
+                <FooterLink
+                  label="Need a hand?"
+                  accessibilityLabel="Help & diagnostics"
+                  onPress={() => router.push("/diagnostics")}
+                />
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -81,6 +83,27 @@ export function WorkshopShell({
 }
 
 /** Small outlined header control, e.g. Recent stories. */
+export function FooterLink({
+  label,
+  accessibilityLabel,
+  onPress,
+}: {
+  label: string;
+  accessibilityLabel?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      onPress={onPress}
+      style={styles.footerLink}
+    >
+      <Text style={styles.footerLinkLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function HeaderButton({
   label,
   onPress,
@@ -215,6 +238,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   footerText: { ...type.small, fontSize: 13, color: colors.mutedInk },
+  footerActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   footerLink: {
     minHeight: layout.minTarget,
     justifyContent: "center",

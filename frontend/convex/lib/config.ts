@@ -13,6 +13,13 @@ export const DEFAULT_ART_STYLE =
 export const BOOK_BUDGET_USD = 0.5;
 export const BOOK_IMAGE_CAP = 6;
 
+// New books per UTC day across the deployment. Read per call so
+// `npx convex env set DAILY_BOOK_LIMIT …` applies without a deploy.
+export const DEFAULT_DAILY_BOOK_LIMIT = 10;
+export function dailyBookLimit(): number {
+  return positiveEnv("DAILY_BOOK_LIMIT", DEFAULT_DAILY_BOOK_LIMIT);
+}
+
 export const PROVIDER_MAX_ATTEMPTS = 4;
 export const PROVIDER_TIMEOUT_MS = 60_000;
 export const PROVIDER_RETRY_BASE_MS = 1_000;

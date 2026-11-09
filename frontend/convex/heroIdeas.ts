@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { contextKey } from "../shared/heroIdeas";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
+import { requireMember } from "./lib/access";
 import { heroContext } from "./lib/catalogValidators";
 import { createDiagnostics } from "./lib/diagnostics";
 import {
@@ -17,6 +18,7 @@ import { getTextProvider } from "./llm/provider";
 export const openSession = action({
   args: {},
   handler: async (ctx) => {
+    await requireMember(ctx);
     const capability = createCapability();
     await ctx.runMutation(internal.heroIdeaState.open, {
       tokenHash: await capabilityHash(capability),
@@ -41,6 +43,7 @@ export const prepare = action({
     clarification: string;
     expiresAt: number;
   }> => {
+    await requireMember(ctx);
     const text = args.text.trim();
     if (!text || text.length > IDEA_TEXT_LIMIT)
       throw new Error("Describe your idea in 1–500 characters.");

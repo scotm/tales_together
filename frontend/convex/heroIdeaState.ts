@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { contextKey } from "../shared/heroIdeas";
 import { internal } from "./_generated/api";
 import { internalMutation, internalQuery, mutation } from "./_generated/server";
+import { requireMember } from "./lib/access";
 import {
   catalogReference,
   heroContext,
@@ -196,6 +197,7 @@ export const confirm = mutation({
     text: v.string(),
   },
   handler: async (ctx, { capability, ideaId, context, text }) => {
+    await requireMember(ctx);
     const hash = await capabilityHash(capability);
     const idea = await ctx.db.get(ideaId);
     const session = idea ? await ctx.db.get(idea.sessionId) : null;
@@ -229,6 +231,7 @@ export const confirm = mutation({
 export const cancel = mutation({
   args: { capability: v.string(), requestId: v.string() },
   handler: async (ctx, { capability, requestId }) => {
+    await requireMember(ctx);
     const hash = await capabilityHash(capability);
     const session = await ctx.db
       .query("heroIdeaSessions")

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
+import { requireMember } from "./lib/access";
 import { catalogContent } from "./lib/catalogValidators";
 
 export const BACKPACK_SIZE = 3;
@@ -8,6 +9,7 @@ export const BACKPACK_SIZE = 3;
 export const listChoices = query({
   args: { pinned: v.optional(v.array(v.id("catalogOptions"))) },
   handler: async (ctx, { pinned = [] }) => {
+    await requireMember(ctx);
     if (pinned.length > 12) throw new Error("Too many pinned choices.");
     const active = await ctx.db
       .query("catalogOptions")

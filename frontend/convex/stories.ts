@@ -1,5 +1,6 @@
-import { type Infer, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import { createEventId } from "../shared/diagnostics/contract";
+import { STORY_SHELF_LIMIT } from "../shared/storyShelf";
 import {
   internalMutation,
   internalQuery,
@@ -8,6 +9,7 @@ import {
   query,
 } from "./_generated/server";
 import { BACKPACK_SIZE } from "./catalog";
+import { requireMember } from "./lib/access";
 import {
   catalogReference,
   customReference,
@@ -20,6 +22,7 @@ import {
   CHAPTER_COUNT,
   DEFAULT_ART_STYLE,
   DEFAULT_VIBE,
+  dailyBookLimit,
   READING_LEVEL,
 } from "./lib/config";
 import { capabilityHash } from "./lib/heroCapabilities";
@@ -143,6 +146,7 @@ export const createFromSetup = mutation({
     kidGender,
   },
   handler: async (ctx, args) => {
+    await requireMember(ctx);
     const name = args.protagonistName.trim();
     if (!name || name.length > 40)
       throw new Error("Give your hero a name of 1–40 characters.");
@@ -196,6 +200,7 @@ export const createFromSetup = mutation({
       args.kidGender === "open"
         ? ""
         : ` The child is ${args.kidGender === "non-binary" ? "non-binary" : `a ${args.kidGender}`}.`;
+    await reserveDailyBook(ctx);
     return await createBook(ctx, {
       title: `${name} and ${problem.titleSuffix}`,
       setting: setting.promptFragment,
@@ -226,6 +231,7 @@ export const createFromSetup = mutation({
 export const get = query({
   args: { storyId: v.id("stories") },
   handler: async (ctx, args) => {
+    await requireMember(ctx);
     const story = await ctx.db.get(args.storyId);
     if (!story) return null;
 
@@ -312,9 +318,43 @@ export const setCover = internalMutation({
   },
 });
 
-export const listRecent = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("stories").order("desc").take(10);
+/**
+ * Each device remembers the stories it made or opened; there is deliberately
+ * no deployment-wide list. Ids from another deployment are skipped.
+ */
+export const listByIds = query({
+  args: { storyIds: v.array(v.string()) },
+  handler: async (ctx, { storyIds }) => {
+    await requireMember(ctx);
+    if (storyIds.length > STORY_SHELF_LIMIT)
+      throw new ConvexError("Too many stories requested.");
+    const stories = [];
+    for (const raw of storyIds) {
+      const id = ctx.db.normalizeId("stories", raw);
+      const story = id ? await ctx.db.get(id) : null;
+      if (story)
+        stories.push({
+          _id: story._id,
+          title: story.title,
+          totalChapters: story.totalChapters,
+        });
+    }
+    return stories;
   },
 });
+
+export const LIBRARY_FULL =
+  "The story library is full for today. Please try again tomorrow.";
+
+/** Counted inside the creating mutation, so a failed create releases it. */
+async function reserveDailyBook(ctx: MutationCtx) {
+  const day = new Date().toISOString().slice(0, 10);
+  const row = await ctx.db
+    .query("bookQuota")
+    .withIndex("by_day", (q) => q.eq("day", day))
+    .unique();
+  const books = row?.books ?? 0;
+  if (books >= dailyBookLimit()) throw new ConvexError(LIBRARY_FULL);
+  if (row) await ctx.db.patch(row._id, { books: books + 1 });
+  else await ctx.db.insert("bookQuota", { day, books: 1 });
+}

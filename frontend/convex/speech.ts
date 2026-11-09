@@ -2,6 +2,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
+import { requireMember } from "./lib/access";
 import { GEMINI_FAST_MODEL } from "./lib/config";
 import { createDiagnostics } from "./lib/diagnostics";
 import {
@@ -20,6 +21,7 @@ export const transcribe = action({
     mimeType: v.string(),
   },
   handler: async (ctx, args): Promise<string> => {
+    await requireMember(ctx);
     const audio = new Uint8Array(args.audio);
     const { mime } = await validateAudio(audio, args.mimeType);
     const fingerprint = Buffer.from(
